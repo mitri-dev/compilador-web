@@ -122,7 +122,6 @@ class Lexer {
         this.tokens.push(this.makeNumber())
       } else if(STRINGSYMBOL.includes(this.current)) {
         // Analiza Cadenas de Caracteres.
-        console.log('Make String')
         this.tokens.push(this.makeString())
       } else if(LETTERS.includes(this.current)) {
         // Analiza Palabras Clave.
