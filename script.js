@@ -8,7 +8,7 @@ class Position {
     this.col = col
   }
 
-  advance(current) {
+  advance(current = null) {
     this.index++
     this.col++
 
@@ -65,6 +65,7 @@ const TT = {
   'float': 'FLOAT',
   'string': 'STRING',
   'id': 'ID',
+  'eof': 'EOF',
   '': '',
 }
 const KEYWORDS = {
@@ -87,7 +88,7 @@ class Token {
     this.position = position
   }
 
-  representation() {
+  rep() {
     if(this.value) return `${this.type}:${this.value}`
     return this.value
   }
@@ -136,6 +137,7 @@ class Lexer {
         this.result.tokens = new Error(this.position,'Caracter Ilegal', this.current)
       }
     }
+    this.tokens.push(new Token(TT.eof, 'eof', this.position.current()))
     return this.result
   }
 
@@ -200,6 +202,10 @@ class NumberNode {
   constructor(token) {
     this.token = token
   }
+   
+  rep() {
+    return `${this.token.value}`
+  }
 }
 
 class BinaryOperationNode {
@@ -207,6 +213,21 @@ class BinaryOperationNode {
     this.leftNode = leftNode
     this.operationNode = operationNode
     this.rightNode = rightNode
+  }
+  
+  rep() {
+    return `(${this.leftNode.rep()}, ${this.operationNode}, ${this.rightNode.rep()})`
+  }
+}
+
+class UnaryOperationNode {
+  constructor(operatorToken, node) {
+    this.operatorToken = operatorToken
+    this.node = node
+  }
+
+  rep() {
+    return `(${this.operatorToken.type}, ${this.node.token.value})`
   }
 }
 
@@ -219,6 +240,7 @@ class Parser {
     this.index = -1
     this.currentToken = null
     this.func
+    this.res
     this.advance()
   }
 
@@ -229,16 +251,51 @@ class Parser {
   }
 
   parse = () => {
-    let res = this.expression()
-    return res
+    this.res = this.expression()
+    if(!this.res.error && this.currentToken.type != TT.eof) {
+      return this.res.failure(new Error(this.currentToken.position, 'Error en Syntaxis', this.currentToken.value))
+    }
+    return this.res
   }
 
   factor = () => {
+    // Update Parser to start a ParseResult for each method
+    this.res = new ParseResult()
     let token = this.currentToken
-    if([TT.int, TT.float].includes(token.type)) {
-      this.advance()
-      return new NumberNode(token)
+
+    if([TT['+'], TT['-']].includes(token.type)) {
+      this.res.register(this.advance())
+      // This. or Let ??
+      let factor = this.res.register(this.factor())
+      if(this.res.error) {
+        return this.res
+      } else {
+        return this.res.success(new UnaryOperationNode(token, factor))
+      }
+
+    } else if([TT.int, TT.float].includes(token.type)) {
+      this.res.register(this.advance())
+      return this.res.success(new NumberNode(token))
+
+    } else if (token.type === TT['(']) {
+      this.res.register(this.advance())
+      let expression = this.res.register(this.expression())
+      if (this.res.error) {
+        return this.res
+        
+      } else if(this.currentToken.type == TT[')']) {
+        this.res.register(this.advance())
+        return this.res.success(expression)
+      
+      } else {
+        return this.res.failure(new Error(this.currentToken.position, 'Cierre de Parentesis Esperado', this.currentToken.value))
+      }
+      
     }
+    // Not INT or FLOAT
+    console.log(token)
+    return this.res.failure(new Error(token.position, 'INT o FLOAT Esperado', token.value))
+
   }
 
   term = () => {
@@ -250,15 +307,55 @@ class Parser {
   }
 
   binaryOperation = (func, ops) => {
-    let left = func()
+    this.res = new ParseResult()
+    let left = this.res.register(func())
+    if(this.res.error) return this.res
 
     while (ops.includes(this.currentToken.type)) {
       let operatorToken = this.currentToken.type
-      this.advance()
-      let right = func()      
+      this.res.register(this.advance())
+      let right = this.res.register(func()) 
+      if(this.res.error) return this.res  
       left = new BinaryOperationNode(left, operatorToken, right)
     }
-    return left
+    return this.res.success(left)
+  }
+}
+
+/////////////////////////////////////////////
+///// PARSE RESULT ///////////////////////////
+/////////////////////////////////////////////
+class ParseResult {
+  constructor(error = null, node = null) {
+    this.error = error
+    this.node = node
+    this.rep;
+  }
+
+  register(res) {
+    // Checks if "res" is a ParseResult, checks
+    // for an error and adds it to self and returns
+    // a Node. Else it will return the res
+    if(res instanceof ParseResult) {
+      if(res.error) {
+        this.error = res.error
+        return res.node
+      }
+    }
+
+    return res
+  }
+
+  success(node) {
+    // Node fix
+    node.failure = this.failure
+    this.node = node
+    return this.node
+  }
+
+  failure(error) {
+    this.error = error
+    return this
   }
 }
 
@@ -271,41 +368,55 @@ function run(text, payload) {
   let lexerResult = lexer.makeTokens()
 
   // Generates Abstraction Tree
-  let parser = new Parser(lexerResult.tokens)
-  let parserResult = parser.parse()
-  console.log(parserResult)
+  let parserResult;
+  if(!lexerResult.error || payload === 'parser') {
+    let parser = new Parser(lexerResult.tokens)
+    parserResult = parser.parse()
+    console.log(parserResult)
+  }
 
 
   // Payloads
   output.innerHTML = ''
   if(payload === 'lexer') {
     if(!lexerResult.error) {
-      const tokensDOM = document.createElement('div')
-      tokensDOM.classList.add('tokens')
+      const outputDOM = document.createElement('div')
+      outputDOM.classList.add('tokens')
       let html = '';
       lexerResult.tokens.forEach(token => {
         html += `<p>${token.type}</p><p>${token.value}</p>`
       })
-      tokensDOM.innerHTML = html
-      output.appendChild(tokensDOM);
+      outputDOM.innerHTML = html
+      output.appendChild(outputDOM);
       output.innerHTML += '<div class="msg">Correcto Análisis Léxico</div>'
     } else {
-      const tokensDOM = document.createElement('div')
-      tokensDOM.classList.add('tokens')
+      const outputDOM = document.createElement('div')
+      outputDOM.classList.add('tokens')
       let html = '';
       html += `<p>Error: ${lexerResult.tokens.errorName}</p><p>Detalles: ${lexerResult.tokens.details}</p>`
       html += `<p>Linea: ${lexerResult.tokens.position.line}</p><p>Columna: ${lexerResult.tokens.position.col++}</p>`
       html += `<p>Indice: ${lexerResult.tokens.position.index}</p>`
-      tokensDOM.innerHTML = html
-      output.appendChild(tokensDOM);
+      outputDOM.innerHTML = html
+      output.appendChild(outputDOM);
       output.innerHTML += '<div class="msg">Incorrecto Análisis Léxico</div>'
     }
   }
 
   if(payload === 'parser') {
-    if(!lexerResult.error) {
-      output.innerHTML = JSON.stringify(parserResult)
+    if(parserResult.error) {
+      const outputDOM = document.createElement('div')
+      outputDOM.classList.add('tokens')
+      let html = '';
+      html += `<p>Error: ${parserResult.error.errorName}</p><p>Detalles: ${parserResult.error.details}</p>`
+      html += `<p>Linea: ${parserResult.error.position.line}</p><p>Columna: ${parserResult.error.position.col++}</p>`
+      html += `<p>Indice: ${parserResult.error.position.index}</p>`
+      outputDOM.innerHTML = html
+      output.appendChild(outputDOM);
+      output.innerHTML += '<div class="msg">Incorrecto Análisis Sintáctico</div>'
+    } else { 
+      output.innerHTML = parserResult.rep()
     }
+    
   }
 }
 
