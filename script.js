@@ -360,6 +360,16 @@ class ParseResult {
 }
 
 /////////////////////////////////////////////
+///// INTERPRETER ///////////////////////////
+/////////////////////////////////////////////
+class Interpreter {
+  constructor() {
+    this.msg = 'hola'
+  }
+}
+
+
+/////////////////////////////////////////////
 ///// RUN ///////////////////////////////////
 /////////////////////////////////////////////
 function run(text, payload) {
@@ -369,10 +379,16 @@ function run(text, payload) {
 
   // Generates Abstraction Tree
   let parserResult;
-  if(!lexerResult.error || payload === 'parser') {
+  let interpreterResult;
+  if(!lexerResult.error) {
     let parser = new Parser(lexerResult.tokens)
     parserResult = parser.parse()
     console.log(parserResult)
+
+    if(!parserResult.error) {
+      let interpreter = new Interpreter(parserResult)
+      console.log(interpreter)
+    }
   }
 
 
@@ -415,8 +431,14 @@ function run(text, payload) {
       output.innerHTML += '<div class="msg">Incorrecto Análisis Sintáctico</div>'
     } else { 
       output.innerHTML = parserResult.rep()
+      output.innerHTML += '<div class="msg">Correcto Análisis Sintáctico</div>'
     }
     
+    
+  }
+  console.log(payload)
+  if(payload === 'interpreter') {
+    output.innerHTML = '<div class="msg">Correcto Análisis Semántico</div>'
   }
 }
 
@@ -429,6 +451,7 @@ const form = document.getElementById('form')
 const output = document.getElementById('output')
 const btnLexer = document.getElementById('lexer')
 const btnParser = document.getElementById('parser')
+const btnInterpreter = document.getElementById('interpreter')
 const btnBorrar = document.getElementById('borrar')
 let keys = []
 
@@ -443,6 +466,7 @@ window.addEventListener('keydown', (e) => {
 
 btnLexer.addEventListener('click', () => run(input.value, btnLexer.id))
 btnParser.addEventListener('click', () => run(input.value, btnParser.id))
+btnInterpreter.addEventListener('click', () => run(input.value, btnInterpreter.id))
 btnBorrar.addEventListener('click', () => input.value = '')
 
 form.addEventListener('submit', (e) => e.preventDefault())
