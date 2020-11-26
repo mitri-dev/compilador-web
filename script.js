@@ -63,6 +63,7 @@ const TT = {
   '-': 'MINUS',
   '*': 'MUL',
   '/': 'DIV',
+  '^': 'POW',
   '=': 'ASSIGN',
   '(': 'LPAREN',
   ')': 'RPAREN',
@@ -272,6 +273,12 @@ class Number {
     }
   }
 
+  powedBy(other) {
+    if(other instanceof Number) {
+      return {res: new Number(this.value ** other.value).setContext(this.context), err: null}
+    }
+  }
+
   rep() {
     return `${this.value}`
   }
@@ -369,22 +376,15 @@ class Parser {
     return this.res
   }
 
-  factor = () => {
-    // Update Parser to start a ParseResult for each method
+  /////////////////////////
+  // REGLAS GRAMATICALES //
+  /////////////////////////
+
+  atom = () => {
     this.res = new ParseResult()
     let token = this.currentToken
-
-    if([TT['+'], TT['-']].includes(token.type)) {
-      this.res.register(this.advance())
-      // This. or Let ??
-      let factor = this.res.register(this.factor())
-      if(this.res.error) {
-        return this.res
-      } else {
-        return this.res.success(new UnaryOperationNode(token, factor))
-      }
-
-    } else if([TT.int, TT.float].includes(token.type)) {
+    
+    if([TT.int, TT.float].includes(token.type)) {
       this.res.register(this.advance())
       return this.res.success(new NumberNode(token))
 
@@ -400,12 +400,34 @@ class Parser {
       
       } else {
         return this.res.failure(new Error(this.currentToken.position, 'Cierre de Parentesis Esperado', this.currentToken.value))
-      }
-      
+      }      
     }
+
+    return this.res.failure(new Error(token.position, 'INT, FLOAT, "+", "-", o "(" Esperado', token.value))
+
+  }
+
+  power = () => {
+    return this.binaryOperation(this.atom, [TT['^'], ], this.factor)
+  }
+ 
+  factor = () => {
+    // Update Parser to start a ParseResult for each method
+    this.res = new ParseResult()
+    let token = this.currentToken
+
+    if([TT['+'], TT['-']].includes(token.type)) {
+      this.res.register(this.advance())
+      let factor = this.res.register(this.factor())
+      if(this.res.error) {
+        return this.res
+      } else {
+        return this.res.success(new UnaryOperationNode(token, factor))
+      }
+    }
+
     // Not INT or FLOAT
-    console.log(token)
-    return this.res.failure(new Error(token.position, 'INT o FLOAT Esperado', token.value))
+    return this.power()
 
   }
 
@@ -417,15 +439,18 @@ class Parser {
     return this.binaryOperation(this.term, [TT['+'], TT['-']])
   }
 
-  binaryOperation = (func, ops) => {
+  binaryOperation = (func_a, ops, func_b = null) => {
+    if(func_b === null) {
+      func_b = func_a
+    }
     this.res = new ParseResult()
-    let left = this.res.register(func())
+    let left = this.res.register(func_a())
     if(this.res.error) return this.res
 
     while (ops.includes(this.currentToken.type)) {
       let operatorToken = this.currentToken.type
       this.res.register(this.advance())
-      let right = this.res.register(func()) 
+      let right = this.res.register(func_b  ()) 
       if(this.res.error) return this.res  
       left = new BinaryOperationNode(left, operatorToken, right)
     }
@@ -533,8 +558,14 @@ class Interpreter {
           result = res;
           error = err;
         }
+        if(node.operationNode.token === TT['^']) {
+          const {res, err} = left.powedBy(right)
+          result = res;
+          error = err;
+        }
 
         // if error return res.failure
+        console.log(error, result)
 
         if(error) {
           return res.failure(error)
@@ -584,91 +615,110 @@ class Interpreter {
 ///// RUN ///////////////////////////////////
 /////////////////////////////////////////////
 function run(text, payload) {
+  // Reset Output
+  output.innerHTML = ''
+
   // Generates Tokens
   let lexer = new Lexer(text)
   let lexerResult = lexer.makeTokens()
+  
+  if (lexerResult.error) {
+    showLexerError()
+    return
+  }
+  if(payload === 'lexer') {
+    showLexerResult()
+    return
+  }
 
   // Generates Abstraction Tree
-  let parserResult;
-  let interpreterResult;
-  if(!lexerResult.error) {
-    let parser = new Parser(lexerResult.tokens)
-    parserResult = parser.parse()
+  let parser = new Parser(lexerResult.tokens)
+  let parserResult = parser.parse()
 
-    if(!parserResult.error) {
-      let interpreter = new Interpreter()
-      let ctx = new Context('@programa')
-      interpreterResult = interpreter.visit(parserResult, ctx)
-      console.log(interpreterResult)
-    }
+  if (parserResult.error) {
+    showParserError()
+    return
   }
-
-
-  // Payloads
-  output.innerHTML = ''
-  if(payload === 'lexer') {
-    if(!lexerResult.error) {
-      const outputDOM = document.createElement('div')
-      outputDOM.classList.add('tokens')
-      let html = '';
-      lexerResult.tokens.forEach(token => {
-        html += `<p>${token.type}</p><p>${token.value}</p>`
-      })
-      outputDOM.innerHTML = html
-      output.appendChild(outputDOM);
-      output.innerHTML += '<div class="msg">Correcto Análisis Léxico</div>'
-    } else {
-      const outputDOM = document.createElement('div')
-      outputDOM.classList.add('tokens')
-      let html = '';
-      html += `<p>Error: ${lexerResult.tokens.errorName}</p><p>Detalles: ${lexerResult.tokens.details}</p>`
-      html += `<p>Linea: ${lexerResult.tokens.position.line}</p><p>Columna: ${lexerResult.tokens.position.col++}</p>`
-      html += `<p>Indice: ${lexerResult.tokens.position.index}</p>`
-      outputDOM.innerHTML = html
-      output.appendChild(outputDOM);
-      output.innerHTML += '<div class="msg">Incorrecto Análisis Léxico</div>'
-    }
-  }
-
   if(payload === 'parser') {
-    if(parserResult.error) {
-      const outputDOM = document.createElement('div')
-      outputDOM.classList.add('tokens')
-      let html = '';
-      html += `<p>Error: ${parserResult.error.errorName}</p><p>Detalles: ${parserResult.error.details}</p>`
-      html += `<p>Linea: ${parserResult.error.position.line}</p><p>Columna: ${parserResult.error.position.col++}</p>`
-      html += `<p>Indice: ${parserResult.error.position.index}</p>`
-      outputDOM.innerHTML = html
-      output.appendChild(outputDOM);
-      output.innerHTML += '<div class="msg">Incorrecto Análisis Sintáctico</div>'
-    } else { 
-      output.innerHTML = parserResult.rep()
-      output.innerHTML += '<div class="msg">Correcto Análisis Sintáctico</div>'
-    }
-    
-    
+    showParserResult()
+    return
   }
 
+  let interpreter = new Interpreter()
+  let ctx = new Context('@programa')
+  interpreterResult = interpreter.visit(parserResult, ctx)
+  console.log(interpreterResult)
+
+  if (interpreterResult.error) {
+    showInterpreterError()
+    return
+  }
   if(payload === 'interpreter') {
-    if(!interpreterResult.error) {
-      const outputDOM = document.createElement('div')
-      outputDOM.classList.add('tokens')
-      let html = '';
-      html += `<p>Resultado</p><p>${interpreterResult.value.value}</p>`
-      outputDOM.innerHTML = html
-      output.appendChild(outputDOM);
-      output.innerHTML += '<div class="msg">Correcto Análisis Semántico</div>'
-    } else {
-      const outputDOM = document.createElement('div')
-      outputDOM.classList.add('tokens')
-      let html = '';
-      html += `<p>Error: ${interpreterResult.error.errorName}</p><p>Detalles: ${interpreterResult.error.details}</p>`
-      html += `<p>Linea: ${interpreterResult.error.position.line}</p><p>Columna: ${interpreterResult.error.position.col++}</p>`
-      html += `<p>Indice: ${interpreterResult.error.position.index}</p><p>Contexto: ${interpreterResult.error.context.displayName}</p>`
-      outputDOM.innerHTML = html
-      output.appendChild(outputDOM);
-      output.innerHTML += '<div class="msg">Incorrecto Análisis Semántico</div>'
-    }
+    showInterpreterResult()
+    return
+  }
+
+  function showLexerError() {
+    const outputDOM = document.createElement('div')
+    outputDOM.classList.add('tokens')
+    let html = '';
+    html += `<p>Error: ${lexerResult.tokens.errorName}</p><p>Detalles: ${lexerResult.tokens.details}</p>`
+    html += `<p>Linea: ${lexerResult.tokens.position.line}</p><p>Columna: ${lexerResult.tokens.position.col++}</p>`
+    html += `<p>Indice: ${lexerResult.tokens.position.index}</p>`
+    outputDOM.innerHTML = html
+    output.appendChild(outputDOM);
+    output.innerHTML += '<div class="msg">Incorrecto Análisis Léxico</div>'
+  }
+
+  function showLexerResult() {
+    const outputDOM = document.createElement('div')
+    outputDOM.classList.add('tokens')
+    let html = '';
+    lexerResult.tokens.forEach(token => {
+      html += `<p>${token.type}</p><p>${token.value}</p>`
+    })
+    outputDOM.innerHTML = html
+    output.appendChild(outputDOM);
+    output.innerHTML += '<div class="msg">Correcto Análisis Léxico</div>'
+  }
+
+  function showParserError() {
+    const outputDOM = document.createElement('div')
+    outputDOM.classList.add('tokens')
+    let html = '';
+    html += `<p>Error: ${parserResult.error.errorName}</p><p>Detalles: ${parserResult.error.details}</p>`
+    html += `<p>Linea: ${parserResult.error.position.line}</p><p>Columna: ${parserResult.error.position.col++}</p>`
+    html += `<p>Indice: ${parserResult.error.position.index}</p>`
+    outputDOM.innerHTML = html
+    output.appendChild(outputDOM);
+    output.innerHTML += '<div class="msg">Incorrecto Análisis Sintáctico</div>'
+  }
+
+  function showParserResult() {
+    output.innerHTML = parserResult.rep()
+    output.innerHTML += '<div class="msg">Correcto Análisis Sintáctico</div>'
+  }
+
+  function showInterpreterError() {
+    const outputDOM = document.createElement('div')
+    outputDOM.classList.add('tokens')
+    let html = '';
+    html += `<p>Error: ${interpreterResult.error.errorName}</p><p>Detalles: ${interpreterResult.error.details}</p>`
+    html += `<p>Linea: ${interpreterResult.error.position.line}</p><p>Columna: ${interpreterResult.error.position.col++}</p>`
+    html += `<p>Indice: ${interpreterResult.error.position.index}</p><p>Contexto: ${interpreterResult.error.context.displayName}</p>`
+    outputDOM.innerHTML = html
+    output.appendChild(outputDOM);
+    output.innerHTML += '<div class="msg">Incorrecto Análisis Semántico</div>'
+  }
+
+  function showInterpreterResult() {
+    const outputDOM = document.createElement('div')
+    outputDOM.classList.add('tokens')
+    let html = '';
+    html += `<p>Resultado</p><p>${interpreterResult.value.value}</p>`
+    outputDOM.innerHTML = html
+    output.appendChild(outputDOM);
+    output.innerHTML += '<div class="msg">Correcto Análisis Semántico</div>'
   }
 }
 
