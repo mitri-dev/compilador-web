@@ -37,6 +37,11 @@ class Error {
     let result = `${this.errorName}: ${this.details}\nLinea ${this.position.line + 1}\nColumna ${this.position.col}\nIndex ${this.position.index}`
     return result
   }
+
+  setContext(context) {
+    this.context = context
+    return this
+  }
 }
 
 
@@ -196,27 +201,128 @@ class Lexer {
 }
 
 /////////////////////////////////////////////
+///// RUNTIME RESULT ////////////////////////
+/////////////////////////////////////////////
+class RuntimeResult {
+  constructor() {
+    this.value = null;
+    this.error = null;
+  }
+
+  register(res) {
+    if(res.error) this.error = res.error
+    return res.value
+  }
+
+  success(value) {
+    this.value = value
+    return this
+  }
+
+  failure(error) {
+    this.error = error
+    return this
+  }
+}
+/////////////////////////////////////////////
+///// VALUES ////////////////////////////////
+/////////////////////////////////////////////
+class Number {
+  constructor(value) {
+    this.value = +value
+    this.setPosition()
+    this.setContext()
+  }
+
+  setPosition(position = null) {
+    this.position = position
+    return this
+  }
+
+  setContext(context = null) {
+    this.context = context
+    return this
+  }
+  
+  addedTo(other) {
+    if(other instanceof Number) {
+      return {res: new Number(this.value + other.value).setContext(this.context), err: null}
+    }
+  }
+
+  subtractedBy(other) {
+    if(other instanceof Number) {
+      return {res: new Number(this.value - other.value).setContext(this.context), err: null}
+    }
+  }
+
+  multipliedBy(other) {
+    if(other instanceof Number) {
+      console.log(this.value, other.value)
+      return {res: new Number(this.value * other.value).setContext(this.context), err: null}
+    }
+  }
+
+  dividedBy(other) {
+    if(other instanceof Number) {
+      if(other.value === 0) {
+        return {res: null, err: new Error(this.position, 'Division entre cero', other.value).setContext(this.context)}
+      }
+      return {res: new Number(this.value / other.value).setContext(this.context), err: null}
+    }
+  }
+
+  rep() {
+    return `${this.value}`
+  }
+}
+
+/////////////////////////////////////////////
 ///// NODES /////////////////////////////////
 /////////////////////////////////////////////
 class NumberNode {
   constructor(token) {
     this.token = token
+    this.position = token.position
   }
    
+  type() {
+    return 'NumberNode'
+  }
+
   rep() {
     return `${this.token.value}`
+  }
+}
+
+class OperationNode {
+  constructor(token) {
+    this.token = token
+  }
+   
+  type() {
+    return 'OperationNode'
+  }
+
+  rep() {
+    return `${this.token}`
   }
 }
 
 class BinaryOperationNode {
   constructor(leftNode, operationNode, rightNode) {
     this.leftNode = leftNode
-    this.operationNode = operationNode
+    this.operationNode = new OperationNode(operationNode)
     this.rightNode = rightNode
+    this.position = leftNode.position
   }
   
+  type() {
+    return 'BinaryOperationNode'
+  }
+
   rep() {
-    return `(${this.leftNode.rep()}, ${this.operationNode}, ${this.rightNode.rep()})`
+    return `(${this.leftNode.rep()}, ${this.operationNode.rep()}, ${this.rightNode.rep()})`
   }
 }
 
@@ -224,10 +330,15 @@ class UnaryOperationNode {
   constructor(operatorToken, node) {
     this.operatorToken = operatorToken
     this.node = node
-  }
+    this.position = operatorToken.position
 
+  }
+  
+  type() {
+    return 'UnaryOperationNode'
+  }
   rep() {
-    return `(${this.operatorToken.type}, ${this.node.token.value})`
+    return `(${this.operatorToken.type}, ${this.node.token ? this.node.token.value : this.node.rep()})`
   }
 }
 
@@ -360,12 +471,112 @@ class ParseResult {
 }
 
 /////////////////////////////////////////////
+///// CONTEXT ///////////////////////////////
+/////////////////////////////////////////////
+class Context {
+  constructor(displayName, parent=null, parentEntryPosition=null) {
+    this.displayName = displayName
+    this.parent = parent
+    this.parentEntryPosition = parentEntryPosition
+  }
+}
+
+/////////////////////////////////////////////
 ///// INTERPRETER ///////////////////////////
 /////////////////////////////////////////////
 class Interpreter {
   constructor() {
-    this.msg = 'hola'
+    this.node = null;
+    this.visitList = {
+      NumberNode: (node, ctx) => {
+        console.log('Found Number Node!')
+
+        let number = new Number(node.token.value)
+        number.setPosition(node.token.position)
+        number.setContext(ctx)
+        return new RuntimeResult().success(number)
+      },
+      BinaryOperationNode: (node, ctx) => {
+        console.log('Found Binary Operation Node!')
+
+        let res = new RuntimeResult()
+        let err;
+
+        let left = res.register(this.visit(node.leftNode, ctx))
+        if(res.error) return res
+
+        let right = res.register(this.visit(node.rightNode, ctx))
+        if(res.error) return res
+
+        let result;
+        let error;
+        // console.log(left)
+        // console.log(right)
+
+        if(node.operationNode.token === TT['+']) {
+          const {res, err} = left.addedTo(right)
+          result = res;
+          error = err;
+        }
+        if(node.operationNode.token === TT['-']) {
+          const {res, err} = left.subtractedBy(right)
+          result = res;
+          error = err;
+        }
+        if(node.operationNode.token === TT['*']) {
+          const {res, err} = left.multipliedBy(right)
+          result = res;
+          error = err;
+        }
+        if(node.operationNode.token === TT['/']) {
+          const {res, err} = left.dividedBy(right)
+          result = res;
+          error = err;
+        }
+
+        // if error return res.failure
+
+        if(error) {
+          return res.failure(error)
+        } else {
+          result.setPosition(node.position)
+          return res.success(result);
+        }
+      },
+      UnaryOperationNode: (node, ctx) => {
+        console.log('Found Unary Operation Node!')
+
+        let res = new RuntimeResult()
+        let err;
+        let number = res.register(this.visit(node.node, ctx))
+        if(res.error) return res
+
+        err = null;
+
+        if(node.operatorToken.type === TT['-']) {
+          number = number.multipliedBy(new Number(-1))
+        }
+
+        if(err) {
+          return res.failure(err)
+        } else { 
+          number.setPosition(node.position);
+          return res.success(number);
+        }
+      }
+    }
   }
+
+  visit(node, ctx) {
+    if(this.visitList[node.type()]) {
+      return this.visitList[node.type()](node, ctx)
+    } else {
+      console.log(`Metodo ${node.type()} no definido.`)
+    }
+    // Visit Binary Operator
+    // colocar tipos a los nodos
+  }
+
 }
 
 
@@ -383,11 +594,12 @@ function run(text, payload) {
   if(!lexerResult.error) {
     let parser = new Parser(lexerResult.tokens)
     parserResult = parser.parse()
-    console.log(parserResult)
 
     if(!parserResult.error) {
-      let interpreter = new Interpreter(parserResult)
-      console.log(interpreter)
+      let interpreter = new Interpreter()
+      let ctx = new Context('@programa')
+      interpreterResult = interpreter.visit(parserResult, ctx)
+      console.log(interpreterResult)
     }
   }
 
@@ -436,9 +648,27 @@ function run(text, payload) {
     
     
   }
-  console.log(payload)
+
   if(payload === 'interpreter') {
-    output.innerHTML = '<div class="msg">Correcto Análisis Semántico</div>'
+    if(!interpreterResult.error) {
+      const outputDOM = document.createElement('div')
+      outputDOM.classList.add('tokens')
+      let html = '';
+      html += `<p>Resultado</p><p>${interpreterResult.value.value}</p>`
+      outputDOM.innerHTML = html
+      output.appendChild(outputDOM);
+      output.innerHTML += '<div class="msg">Correcto Análisis Semántico</div>'
+    } else {
+      const outputDOM = document.createElement('div')
+      outputDOM.classList.add('tokens')
+      let html = '';
+      html += `<p>Error: ${interpreterResult.error.errorName}</p><p>Detalles: ${interpreterResult.error.details}</p>`
+      html += `<p>Linea: ${interpreterResult.error.position.line}</p><p>Columna: ${interpreterResult.error.position.col++}</p>`
+      html += `<p>Indice: ${interpreterResult.error.position.index}</p><p>Contexto: ${interpreterResult.error.context.displayName}</p>`
+      outputDOM.innerHTML = html
+      output.appendChild(outputDOM);
+      output.innerHTML += '<div class="msg">Incorrecto Análisis Semántico</div>'
+    }
   }
 }
 
