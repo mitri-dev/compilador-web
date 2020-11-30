@@ -67,6 +67,7 @@ const TT = {
   '=': 'ASSIGN',
   '(': 'LPAREN',
   ')': 'RPAREN',
+  'identifier': 'IDENTIFIER',
   'int': 'INT',
   'float': 'FLOAT',
   'string': 'STRING',
@@ -74,14 +75,25 @@ const TT = {
   'eof': 'EOF',
   '': '',
 }
-const KEYWORDS = {
-  'const': true,
-  'let': true,
-  'if': true,
-  'do': true,
-  'while': true,
-  'for': true,
-}
+const KEYWORDS = [
+  'const',
+  'let',
+  'var',
+  'if',
+  'do',
+  'while',
+  'for',
+]
+const OPERATORS = [
+  '+',
+  '-',
+  '*',
+  '/',
+  '^',
+  '=',
+  '(',
+  ')',
+]
 
 
 /////////////////////////////////////////////
@@ -97,6 +109,10 @@ class Token {
   rep() {
     if(this.value) return `${this.type}:${this.value}`
     return this.value
+  }
+
+  matches(type, value) {
+    return this.type === type && this.value === value;
   }
 }
 
@@ -192,12 +208,12 @@ class Lexer {
     let word = '';
     let position = this.position.current()
 
-    while (this.current != null && (LETTERS).includes(this.current)) {
+    while (this.current != null && (CHARSET).includes(this.current) && this.current != ' ' && !OPERATORS.includes(this.current)) {
       word += this.current
       this.advance()
     }
-    if(KEYWORDS[word]) return new Token(word.toUpperCase(), word, position)
-    return new Token('WORD', word, position)
+    if(KEYWORDS.includes(word)) return new Token('KEYWORD', word, position)
+    return new Token(TT.identifier, word, position)
   }
 }
 
@@ -259,7 +275,6 @@ class Number {
 
   multipliedBy(other) {
     if(other instanceof Number) {
-      console.log(this.value, other.value)
       return {res: new Number(this.value * other.value).setContext(this.context), err: null}
     }
   }
@@ -299,6 +314,37 @@ class NumberNode {
 
   rep() {
     return `${this.token.value}`
+  }
+}
+
+class VarAccessNode {
+  constructor(varNameToken) {
+    this.varNameToken = varNameToken
+    this.position = this.varNameToken.position
+  }
+
+  type() {
+    return 'VarAccessNode'
+  }
+
+  rep() {
+    return `${this.varNameToken.value}`
+  }
+}
+
+class VarAssignNode {
+  constructor(varNameToken, valueNode) {
+    this.varNameToken = varNameToken
+    this.valueNode = valueNode
+    this.position = this.varNameToken.position
+  }
+
+  type() {
+    return 'VarAssignNode'
+  }
+
+  rep() {
+    return `(${this.varNameToken.rep()}, ASSIGN, ${this.valueNode.rep()})`
   }
 }
 
@@ -385,17 +431,25 @@ class Parser {
     let token = this.currentToken
     
     if([TT.int, TT.float].includes(token.type)) {
-      this.res.register(this.advance())
+      this.res.registerAdvancement()
+      this.advance()
       return this.res.success(new NumberNode(token))
 
+    } else if(token.type == TT.identifier) {
+      this.res.registerAdvancement()
+      this.advance()
+      return this.res.success(new VarAccessNode(token))
+ 
     } else if (token.type === TT['(']) {
-      this.res.register(this.advance())
+      this.res.registerAdvancement()
+      this.advance()
       let expression = this.res.register(this.expression())
       if (this.res.error) {
         return this.res
         
       } else if(this.currentToken.type == TT[')']) {
-        this.res.register(this.advance())
+        this.res.registerAdvancement()
+        this.advance()
         return this.res.success(expression)
       
       } else {
@@ -403,7 +457,7 @@ class Parser {
       }      
     }
 
-    return this.res.failure(new Error(token.position, 'INT, FLOAT, "+", "-", o "(" Esperado', token.value))
+    return this.res.failure(new Error(token.position, 'INT, FLOAT, IDENTIFIER, "+", "-", o "(" Esperado', token.value))
 
   }
 
@@ -417,7 +471,8 @@ class Parser {
     let token = this.currentToken
 
     if([TT['+'], TT['-']].includes(token.type)) {
-      this.res.register(this.advance())
+      this.res.registerAdvancement()
+      this.advance()
       let factor = this.res.register(this.factor())
       if(this.res.error) {
         return this.res
@@ -436,7 +491,34 @@ class Parser {
   }
 
   expression = () => {
-    return this.binaryOperation(this.term, [TT['+'], TT['-']])
+    this.res = new ParseResult()
+    if(this.currentToken.matches('KEYWORD', 'var')) {
+      this.res.registerAdvancement()
+      this.advance()
+      
+      if(this.currentToken.type != TT.identifier) {
+        return this.res.failure(new Error(this.currentToken.position, 'IDENTIFIER Esperado', this.currentToken.value))
+      }
+      let varName = this.currentToken
+      this.res.registerAdvancement()
+      this.advance()
+
+      if(this.currentToken.type != TT['=']) {
+        return this.res.failure(new Error(this.currentToken.position, '"=" Esperado', this.currentToken.value))
+      }
+
+      this.res.registerAdvancement()
+      this.advance()
+      let expression = this.res.register(this.expression())
+      if(this.res.error) return this.res
+      return this.res.success(new VarAssignNode(varName, expression))
+    }
+
+    let node = this.res.register(this.binaryOperation(this.term, [TT['+'], TT['-']]))
+
+    if(this.res.error) return this.res.failure(new Error(this.currentToken.position, '"VAR", "+", "-", o "(" Esperado', this.currentToken.value))
+
+    return this.res.success(node)
   }
 
   binaryOperation = (func_a, ops, func_b = null) => {
@@ -449,8 +531,9 @@ class Parser {
 
     while (ops.includes(this.currentToken.type)) {
       let operatorToken = this.currentToken.type
-      this.res.register(this.advance())
-      let right = this.res.register(func_b  ()) 
+      this.res.registerAdvancement()
+      this.advance()
+      let right = this.res.register(func_b()) 
       if(this.res.error) return this.res  
       left = new BinaryOperationNode(left, operatorToken, right)
     }
@@ -465,21 +548,20 @@ class ParseResult {
   constructor(error = null, node = null) {
     this.error = error
     this.node = node
-    this.rep;
+    this.advanceCount = 0
+  }
+
+  registerAdvancement() {
+    this.advanceCount = this.advanceCount + 1
   }
 
   register(res) {
-    // Checks if "res" is a ParseResult, checks
-    // for an error and adds it to self and returns
-    // a Node. Else it will return the res
-    if(res instanceof ParseResult) {
-      if(res.error) {
-        this.error = res.error
-        return res.node
-      }
+    this.advanceCount = this.advanceCount + res.advanceCount
+    if(res.error) {
+      this.error = res.error
+    } else {
+      return res
     }
-
-    return res
   }
 
   success(node) {
@@ -490,7 +572,9 @@ class ParseResult {
   }
 
   failure(error) {
-    this.error = error
+    if(!this.error || this.advanceCount != 0) {
+      this.error = error
+    }
     return this
   }
 }
@@ -503,6 +587,33 @@ class Context {
     this.displayName = displayName
     this.parent = parent
     this.parentEntryPosition = parentEntryPosition
+    this.symbolTable = null
+  }
+}
+
+/////////////////////////////////////////////
+///// SYMBOL TABLE //////////////////////////
+/////////////////////////////////////////////
+class SymbolTable {
+  constructor() {
+    this.symbols = {}
+    this.parent = null
+  }
+
+  get(name) {
+    let value = this.symbols[name]
+    if(!value && this.parent) {
+      return this.parent.get(name)
+    }
+    return value
+  }
+
+  set(name, value) {
+    this.symbols[name] = value
+  }
+
+  remove(name) {
+    delete this.symbols[name]
   }
 }
 
@@ -514,16 +625,12 @@ class Interpreter {
     this.node = null;
     this.visitList = {
       NumberNode: (node, ctx) => {
-        console.log('Found Number Node!')
-
         let number = new Number(node.token.value)
         number.setPosition(node.token.position)
         number.setContext(ctx)
         return new RuntimeResult().success(number)
       },
       BinaryOperationNode: (node, ctx) => {
-        console.log('Found Binary Operation Node!')
-
         let res = new RuntimeResult()
         let err;
 
@@ -535,8 +642,6 @@ class Interpreter {
 
         let result;
         let error;
-        // console.log(left)
-        // console.log(right)
 
         if(node.operationNode.token === TT['+']) {
           const {res, err} = left.addedTo(right)
@@ -564,9 +669,6 @@ class Interpreter {
           error = err;
         }
 
-        // if error return res.failure
-        console.log(error, result)
-
         if(error) {
           return res.failure(error)
         } else {
@@ -575,8 +677,6 @@ class Interpreter {
         }
       },
       UnaryOperationNode: (node, ctx) => {
-        console.log('Found Unary Operation Node!')
-
         let res = new RuntimeResult()
         let err;
         let number = res.register(this.visit(node.node, ctx))
@@ -594,7 +694,29 @@ class Interpreter {
           number.setPosition(node.position);
           return res.success(number);
         }
-      }
+      },
+      VarAccessNode: (node, ctx) => {
+        let res = new RuntimeResult()
+        let varName = node.varNameToken.value
+        let value = ctx.symbolTable.get(varName)
+
+        if(!value) {
+          return res.failure(new Error(node.varNameToken.position, `${varName} no está definida`, node.varNameToken.value).setContext(ctx))
+        }
+
+        return res.success(value)
+        
+      },
+      VarAssignNode: (node, ctx) => {
+        let res = new RuntimeResult()
+        let varName = node.varNameToken.value
+        let value = res.register(this.visit(node.valueNode, ctx))
+
+        if(res.error) return res
+        ctx.symbolTable.set(varName, value)
+        return res.success(value)
+
+      },
     }
   }
 
@@ -614,6 +736,9 @@ class Interpreter {
 /////////////////////////////////////////////
 ///// RUN ///////////////////////////////////
 /////////////////////////////////////////////
+
+let globalSymbolTable = new SymbolTable()
+globalSymbolTable.set('null', new Number(0))
 function run(text, payload) {
   // Reset Output
   output.innerHTML = ''
@@ -645,9 +770,9 @@ function run(text, payload) {
   }
 
   let interpreter = new Interpreter()
-  let ctx = new Context('@programa')
+  let ctx = new Context('&lt;programa&gt;')
+  ctx.symbolTable = globalSymbolTable
   interpreterResult = interpreter.visit(parserResult, ctx)
-  console.log(interpreterResult)
 
   if (interpreterResult.error) {
     showInterpreterError()
@@ -732,7 +857,8 @@ const output = document.getElementById('output')
 const btnLexer = document.getElementById('lexer')
 const btnParser = document.getElementById('parser')
 const btnInterpreter = document.getElementById('interpreter')
-const btnBorrar = document.getElementById('borrar')
+// const btnBorrar = document.getElementById('borrar')
+// btnBorrar.addEventListener('click', () => input.value = '')
 let keys = []
 
 // Listeners
@@ -747,11 +873,35 @@ window.addEventListener('keydown', (e) => {
 btnLexer.addEventListener('click', () => run(input.value, btnLexer.id))
 btnParser.addEventListener('click', () => run(input.value, btnParser.id))
 btnInterpreter.addEventListener('click', () => run(input.value, btnInterpreter.id))
-btnBorrar.addEventListener('click', () => input.value = '')
 
 form.addEventListener('submit', (e) => e.preventDefault())
 
-// Functions
-function test() {
-
+document.onkeydown = function() {    
+  switch (event.keyCode) { 
+      case 116 : // F5 button
+          event.returnValue = false;
+          event.keyCode = 0;
+          run(input.value, btnLexer.id); 
+          return false; 
+      case 117 : // F6 button
+          event.returnValue = false;
+          event.keyCode = 0;
+          run(input.value, btnParser.id); 
+          return false; 
+      case 118 : // F7 button
+          event.returnValue = false;
+          event.keyCode = 0;
+          run(input.value, btnInterpreter.id); 
+          return false; 
+      case 82 : //R button
+          if (event.ctrlKey) { 
+              event.returnValue = false; 
+              event.keyCode = 0;  
+              return false; 
+          } 
+  }
 }
+
+// Posibles Test Demos
+// 
+// 1. var a = var b = var c = 10
