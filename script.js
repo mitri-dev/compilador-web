@@ -59,6 +59,7 @@ for (let i = 32; i < 256; i++) {
 }
 
 const TT = {
+  // Operadores Artimeticos
   '+': 'PLUS',
   '-': 'MINUS',
   '*': 'MUL',
@@ -67,6 +68,17 @@ const TT = {
   '=': 'ASSIGN',
   '(': 'LPAREN',
   ')': 'RPAREN',
+  // Operadores Logicos
+  '<': 'LT',
+  '>': 'GT',
+  '==': 'EE',
+  '!=': 'NE',
+  '<=': 'LTE',
+  '>=': 'GTE',
+  '&&': 'AND',
+  '!': 'NOT',
+  '||': 'OR',
+  // Data types
   'identifier': 'IDENTIFIER',
   'int': 'INT',
   'float': 'FLOAT',
@@ -80,6 +92,9 @@ const KEYWORDS = [
   'let',
   'var',
   'if',
+  'then',
+  'elif',
+  'else',
   'do',
   'while',
   'for',
@@ -93,6 +108,15 @@ const OPERATORS = [
   '=',
   '(',
   ')',
+]
+
+const LOGICAL = [
+  '=',
+  '!',
+  '<',
+  '>',
+  '&',
+  '|',
 ]
 
 
@@ -149,6 +173,9 @@ class Lexer {
       } else if(LETTERS.includes(this.current)) {
         // Analiza Palabras Clave.
         this.tokens.push(this.makeKeyword())
+      } else if(LOGICAL.includes(this.current)) {
+        // Analiza Palabras Clave.
+        this.tokens.push(this.makeLogical())
       } else if(TT[this.current]) {
         // Analiza si el caracter esta dentro de los conocidos.
         this.tokens.push(new Token(TT[this.current], this.current, this.position.current()))
@@ -214,6 +241,21 @@ class Lexer {
     }
     if(KEYWORDS.includes(word)) return new Token('KEYWORD', word, position)
     return new Token(TT.identifier, word, position)
+  }
+
+  makeLogical() {
+    let result = '';
+    let position = this.position.current()
+
+    while (this.current != null && LOGICAL.includes(this.current)) {
+      result += this.current
+      this.advance()
+    }
+
+    if(TT[result]) return new Token(TT[result], result, position)
+
+    this.result.error = true;
+    this.result.tokens = new Error(position, 'Mal Formato', result)
   }
 }
 
@@ -292,6 +334,62 @@ class Number {
     if(other instanceof Number) {
       return {res: new Number(this.value ** other.value).setContext(this.context), err: null}
     }
+  }
+
+  ee(other) {
+    if(other instanceof Number) {
+      return {res: new Number(this.value == other.value).setContext(this.context), err: null}
+    }
+  }
+  
+  ne(other) {
+    if(other instanceof Number) {
+      return {res: new Number(this.value != other.value).setContext(this.context), err: null}
+    }
+  }
+  
+  lt(other) {
+    if(other instanceof Number) {
+      return {res: new Number(this.value < other.value).setContext(this.context), err: null}
+    }
+  }
+
+  gt(other) {
+    if(other instanceof Number) {
+      return {res: new Number(this.value > other.value).setContext(this.context), err: null}
+    }
+  }
+
+  lte(other) {
+    if(other instanceof Number) {
+      return {res: new Number(this.value <= other.value).setContext(this.context), err: null}
+    }
+  }
+
+  gte(other) {
+    if(other instanceof Number) {
+      return {res: new Number(this.value >= other.value).setContext(this.context), err: null}
+    }
+  }
+
+  and(other) {
+    if(other instanceof Number) {
+      return {res: new Number(this.value && other.value).setContext(this.context), err: null}
+    }
+  }
+
+  or(other) {
+    if(other instanceof Number) {
+      return {res: new Number(this.value || other.value).setContext(this.context), err: null}
+    }
+  }
+
+  not() {
+    return {res: new Number(this.value == 1 ? 0 : 1).setContext(this.context), err: null}
+  }
+
+  isTrue() {
+    return this.value != 0
   }
 
   rep() {
@@ -395,6 +493,20 @@ class UnaryOperationNode {
   }
 }
 
+class IfNode {
+  constructor(cases, elseCase) {
+    this.cases = cases
+    this.elseCase = elseCase
+    console.log(cases)
+    this.position = cases[0].position
+  }
+
+  rep() {
+    console.log(this.cases)
+    return '(IF)'
+  }
+}
+
 /////////////////////////////////////////////
 ///// PARSER ////////////////////////////////
 /////////////////////////////////////////////
@@ -426,6 +538,62 @@ class Parser {
   // REGLAS GRAMATICALES //
   /////////////////////////
 
+  ifExpr = () => {
+    this.res = new ParseResult()
+    let cases = []
+    let elseCase = null
+
+    if(!this.currentToken.matches('KEYWORD', 'if')) {
+      return this.res.failure(new Error(this.currentToken.position, '"if" esperado', this.currentToken.value))
+    }
+
+    this.res.registerAdvancement()
+    this.advance()
+
+    let condition = this.res.register(this.expression())
+    if(this.res.error) return this.res
+
+    if(!this.currentToken.matches('KEYWORD', 'then')) {
+      return this.res.failure(new Error(this.currentToken.position, '"then" esperado', this.currentToken.value))
+    }
+
+    this.res.registerAdvancement()
+    this.advance()
+
+    let expression = this.res.register(this.expression())
+    if(this.res.error) return this.res
+    cases.push((condition, expression))
+
+    while (this.currentToken.matches('KEYWORD', 'elif')) {
+      this.res.registerAdvancement()
+      this.advance()
+
+      condition = this.res.register(this.expression())
+      if(this.res.error) return this.res
+
+      if(!this.currentToken.matches('KEYWORD', 'then')) {
+        return this.res.failure(new Error(this.currentToken.position, '"then" esperado', this.currentToken.value))
+      }
+
+      this.res.registerAdvancement()
+      this.advance()
+
+      let expression = this.res.register(this.expression())
+      if(this.res.error) return this.res
+      cases.push((condition, expression))
+    }
+
+    if(this.currentToken.matches('KEYWORD', 'else')) {
+      this.res.registerAdvancement()
+      this.advance()
+
+      elseCase = this.res.register(this.expression())
+      if(this.res.error) return this.res
+    }
+
+    return this.res.success(new IfNode(cases, elseCase))
+  }
+
   atom = () => {
     this.res = new ParseResult()
     let token = this.currentToken
@@ -455,6 +623,10 @@ class Parser {
       } else {
         return this.res.failure(new Error(this.currentToken.position, 'Cierre de Parentesis Esperado', this.currentToken.value))
       }      
+    } else if(token.matches('KEYWORD', 'if')) {
+      let ifExpr = this.res.register(this.ifExpr())
+      if(this.res.error) return this.res
+      return this.res.success(ifExpr)
     }
 
     return this.res.failure(new Error(token.position, 'INT, FLOAT, IDENTIFIER, "+", "-", o "(" Esperado', token.value))
@@ -489,6 +661,33 @@ class Parser {
   term = () => {
     return this.binaryOperation(this.factor, [TT['*'], TT['/']])
   }
+  
+  arithExpr = () => {
+    return this.binaryOperation(this.term, [TT['+'], TT['-']])
+  }
+
+  compExpr = () => {
+    this.res = new ParseResult()
+
+    if(this.currentToken.type == TT['!']) {
+      let operationToken = this.currentToken
+      this.res.registerAdvancement()
+      this.advance()
+
+      let node = this.res.register(this.compExpr())
+      if(this.res.error) return this.res
+      return this.res.success(new UnaryOperationNode(operationToken, node))
+    }
+
+    let node = this.res.register(this.binaryOperation(this.arithExpr, [TT['=='], TT['!='], TT['<'], TT['>'], TT['>='], TT['<=']]))
+
+    if (this.res.error) {
+      return this.res.failure(new Error(this.currentToken.position, 'INT, FLOAT, IDENTIFIER, "+", "-", "(", "!" Esperado', this.currentToken.value))
+    }
+    return this.res.success(node)
+
+    
+  }
 
   expression = () => {
     this.res = new ParseResult()
@@ -514,7 +713,7 @@ class Parser {
       return this.res.success(new VarAssignNode(varName, expression))
     }
 
-    let node = this.res.register(this.binaryOperation(this.term, [TT['+'], TT['-']]))
+    let node = this.res.register(this.binaryOperation(this.compExpr, [TT['&&'], TT['||']]))
 
     if(this.res.error) return this.res.failure(new Error(this.currentToken.position, '"VAR", "+", "-", o "(" Esperado', this.currentToken.value))
 
@@ -529,7 +728,7 @@ class Parser {
     let left = this.res.register(func_a())
     if(this.res.error) return this.res
 
-    while (ops.includes(this.currentToken.type)) {
+    while (ops.includes(this.currentToken.type) || ops.includes(this.currentToken.type, this.currentToken.value)) {
       let operatorToken = this.currentToken.type
       this.res.registerAdvancement()
       this.advance()
@@ -668,6 +867,46 @@ class Interpreter {
           result = res;
           error = err;
         }
+        if(node.operationNode.token === TT['==']) {
+          const {res, err} = left.ee(right)
+          result = res;
+          error = err;
+        }
+        if(node.operationNode.token === TT['!=']) {
+          const {res, err} = left.ne(right)
+          result = res;
+          error = err;
+        }
+        if(node.operationNode.token === TT['<']) {
+          const {res, err} = left.lt(right)
+          result = res;
+          error = err;
+        }
+        if(node.operationNode.token === TT['>']) {
+          const {res, err} = left.gt(right)
+          result = res;
+          error = err;
+        }
+        if(node.operationNode.token === TT['<=']) {
+          const {res, err} = left.lte(right)
+          result = res;
+          error = err;
+        }
+        if(node.operationNode.token === TT['>=']) {
+          const {res, err} = left.gte(right)
+          result = res;
+          error = err;
+        }
+        if(node.operationNode.token === TT['&&']) {
+          const {res, err} = left.and(right)
+          result = res;
+          error = err;
+        }
+        if(node.operationNode.token === TT['||']) {
+          const {res, err} = left.or(right)
+          result = res;
+          error = err;
+        }
 
         if(error) {
           return res.failure(error)
@@ -686,6 +925,10 @@ class Interpreter {
 
         if(node.operatorToken.type === TT['-']) {
           number = number.multipliedBy(new Number(-1))
+        }
+
+        if(node.operatorToken.type === TT['!']) {
+          number = number.not()
         }
 
         if(err) {
@@ -717,6 +960,33 @@ class Interpreter {
         return res.success(value)
 
       },
+      IfNode: (node, ctx) => {
+        let res = new RuntimeResult()
+
+        console.log(node.cases)
+
+        for(let i = 0; i < node.cases.length; i++) {
+          const e = array[i];
+          let conditionValue = res.register(this.visit(condition, ctx))
+          if(res.error) return res
+          
+          if(conditionValue.isTrue()) {
+            let exprValue = res.register(this.visit(expression, ctx))
+            if(res.error) return res
+            return res.success(exprValue)
+          }
+
+          if(node.elseCase) {
+            let elseValue = res.register(this.visit(node.elseCase, ctx))
+            if(res.error) return res
+            return res.success(elseValue)
+          }
+
+          return res.success(null)
+        }
+
+
+      },
     }
   }
 
@@ -739,6 +1009,8 @@ class Interpreter {
 
 let globalSymbolTable = new SymbolTable()
 globalSymbolTable.set('null', new Number(0))
+globalSymbolTable.set('true', new Number(1))
+globalSymbolTable.set('false', new Number(0))
 function run(text, payload) {
   // Reset Output
   output.innerHTML = ''
@@ -905,3 +1177,5 @@ document.onkeydown = function() {
 // Posibles Test Demos
 // 
 // 1. var a = var b = var c = 10
+// 2. var a = 2 + 8 == 5 + 5
+// 3. var a = 1 == 1 && 2 == 2
