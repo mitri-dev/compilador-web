@@ -497,12 +497,13 @@ class IfNode {
   constructor(cases, elseCase) {
     this.cases = cases
     this.elseCase = elseCase
-    console.log(cases)
     this.position = cases[0].position
   }
 
+  type() {
+    return 'IfNode'
+  }
   rep() {
-    console.log(this.cases)
     return '(IF)'
   }
 }
@@ -562,7 +563,7 @@ class Parser {
 
     let expression = this.res.register(this.expression())
     if(this.res.error) return this.res
-    cases.push((condition, expression))
+    cases.push([condition, expression])
 
     while (this.currentToken.matches('KEYWORD', 'elif')) {
       this.res.registerAdvancement()
@@ -580,7 +581,7 @@ class Parser {
 
       let expression = this.res.register(this.expression())
       if(this.res.error) return this.res
-      cases.push((condition, expression))
+      cases.push([condition, expression])
     }
 
     if(this.currentToken.matches('KEYWORD', 'else')) {
@@ -614,7 +615,7 @@ class Parser {
       let expression = this.res.register(this.expression())
       if (this.res.error) {
         return this.res
-        
+    
       } else if(this.currentToken.type == TT[')']) {
         this.res.registerAdvancement()
         this.advance()
@@ -964,9 +965,11 @@ class Interpreter {
         let res = new RuntimeResult()
 
         console.log(node.cases)
+        console.log(node)
 
         for(let i = 0; i < node.cases.length; i++) {
-          const e = array[i];
+          const condition = node.cases[i][0];
+          const expression = node.cases[i][1];
           let conditionValue = res.register(this.visit(condition, ctx))
           if(res.error) return res
           
@@ -1112,7 +1115,7 @@ function run(text, payload) {
     const outputDOM = document.createElement('div')
     outputDOM.classList.add('tokens')
     let html = '';
-    html += `<p>Resultado</p><p>${interpreterResult.value.value}</p>`
+    html += `<p>Resultado</p><p>${interpreterResult.value ? interpreterResult.value.value : '&lt;null&gt;'}</p>`
     outputDOM.innerHTML = html
     output.appendChild(outputDOM);
     output.innerHTML += '<div class="msg">Correcto Análisis Semántico</div>'
