@@ -95,9 +95,12 @@ const KEYWORDS = [
   'then',
   'elif',
   'else',
+  'for',
+  'to',
+  'step',
+  'while',
   'do',
   'while',
-  'for',
 ]
 const OPERATORS = [
   '+',
@@ -508,6 +511,41 @@ class IfNode {
   }
 }
 
+class ForNode {
+  constructor(varNameToken, startNode, endNode, stepNode = null, bodyNode) {
+    this.varNameToken = varNameToken
+    this.startNode = startNode
+    this.endNode = endNode
+    this.stepNode = stepNode
+    this.bodyNode = bodyNode
+
+    this.position = this.varNameToken.position
+  }
+
+  type() {
+    return 'ForNode'
+  }
+  rep() {
+    return '(FOR)'
+  }
+}
+
+class WhileNode {
+  constructor(conditionNode, bodyNode) {
+    this.conditionNode = conditionNode
+    this.bodyNode = bodyNode
+
+    this.position = this.conditionNode.position
+  }
+
+  type() {
+    return 'WhileNode'
+  }
+  rep() {
+    return '(WHILE)'
+  }
+}
+
 /////////////////////////////////////////////
 ///// PARSER ////////////////////////////////
 /////////////////////////////////////////////
@@ -628,6 +666,16 @@ class Parser {
       let ifExpr = this.res.register(this.ifExpr())
       if(this.res.error) return this.res
       return this.res.success(ifExpr)
+
+    } else if(token.matches('KEYWORD', 'for')) {
+      let forExpr = this.res.register(this.forExpr())
+      if(this.res.error) return this.res
+      return this.res.success(forExpr)
+
+    } else if(token.matches('KEYWORD', 'while')) {
+      let whileExpr = this.res.register(this.whileExpr())
+      if(this.res.error) return this.res
+      return this.res.success(whileExpr)
     }
 
     return this.res.failure(new Error(token.position, 'INT, FLOAT, IDENTIFIER, "+", "-", o "(" Esperado', token.value))
@@ -686,8 +734,6 @@ class Parser {
       return this.res.failure(new Error(this.currentToken.position, 'INT, FLOAT, IDENTIFIER, "+", "-", "(", "!" Esperado', this.currentToken.value))
     }
     return this.res.success(node)
-
-    
   }
 
   expression = () => {
@@ -738,6 +784,94 @@ class Parser {
       left = new BinaryOperationNode(left, operatorToken, right)
     }
     return this.res.success(left)
+  }
+
+  forExpr = () => {
+    this.res = new ParseResult()
+
+    if(!this.currentToken.matches('KEYWORD', 'for')) {
+      return this.res.failure(new Error(this.currentToken.position, '"for" esperado', this.currentToken.value))
+    }
+
+    this.res.registerAdvancement()
+    this.advance()
+
+    if(this.currentToken.type != TT.identifier) {
+      return this.res.failure(new Error(this.currentToken.position, 'IDENTIFIER Esperado', this.currentToken.value))
+    }
+
+    let varName = this.currentToken
+    this.res.registerAdvancement()
+    this.advance()
+
+    if(this.currentToken.type != TT['=']) {
+      return this.res.failure(new Error(this.currentToken.position, '"=" Esperado', this.currentToken.value))
+    }
+
+    this.res.registerAdvancement()
+    this.advance()
+
+    let startValue = this.res.register(this.expression())
+    if(this.res.error) return this.res
+    
+    if(!this.currentToken.matches('KEYWORD', 'to')) {
+      return this.res.failure(new Error(this.currentToken.position, '"to" esperado', this.currentToken.value))
+    }
+
+    this.res.registerAdvancement()
+    this.advance()
+
+    let endValue = this.res.register(this.expression())
+    if(this.res.error) return this.res
+
+    let stepValue;
+    if(this.currentToken.matches('KEYWORD', 'step')) {
+      this.res.registerAdvancement()
+      this.advance()
+
+      stepValue = this.res.register(this.expression())
+      if(this.res.error) return this.res
+    } else {
+      stepValue = null
+    }
+
+    if(!this.currentToken.matches('KEYWORD', 'then')) {
+      return this.res.failure(new Error(this.currentToken.position, '"then" esperado', this.currentToken.value))
+    }
+
+    this.res.registerAdvancement()
+    this.advance()
+
+    let body = this.res.register(this.expression())
+    if(this.res.error) return this.res
+
+    return this.res.success(new ForNode(varName, startValue, endValue, stepValue, body))
+  }
+
+  whileExpr = () => {
+    this.res = new ParseResult()
+
+    if(!this.currentToken.matches('KEYWORD', 'while')) {
+      return this.res.failure(new Error(this.currentToken.position, '"while" esperado', this.currentToken.value))
+    }
+
+    this.res.registerAdvancement()
+    this.advance()
+
+    let condition = this.res.register(this.expression())
+    if(this.res.error) return this.res
+
+    if(!this.currentToken.matches('KEYWORD', 'then')) {
+      return this.res.failure(new Error(this.currentToken.position, '"then" esperado', this.currentToken.value))
+    }
+
+    this.res.registerAdvancement()
+    this.advance()
+
+    let body = this.res.register(this.expression())
+    if(this.res.error) return this.res
+
+    return this.res.success(new WhileNode(condition, body))
   }
 }
 
@@ -964,9 +1098,6 @@ class Interpreter {
       IfNode: (node, ctx) => {
         let res = new RuntimeResult()
 
-        console.log(node.cases)
-        console.log(node)
-
         for(let i = 0; i < node.cases.length; i++) {
           const condition = node.cases[i][0];
           const expression = node.cases[i][1];
@@ -987,9 +1118,62 @@ class Interpreter {
 
           return res.success(null)
         }
-
-
       },
+      ForNode: (node, ctx) => {
+        let res = new RuntimeResult()
+
+        let startNode = res.register(this.visit(node.startNode, ctx))
+        if(res.error) return res
+
+        let endNode = res.register(this.visit(node.endNode, ctx))
+        if(res.error) return res
+
+        let stepNode;
+        if(node.stepNode) {
+          stepNode = res.register(this.visit(node.stepNode, ctx))
+          if(res.error) return res
+        } else {
+          stepNode = new Number(1)
+        }
+
+        let i = startNode.value
+
+        let condition
+        if(startNode.value >= 0) {
+          condition = () => {
+            return i < endNode.value
+          }
+        } else {
+          condition = () => {
+            return i > endNode.value
+          }
+        }
+
+        while (condition()) {
+          ctx.symbolTable.set(node.varNameToken.value, new Number(i))
+          i += stepNode.value
+
+          res.register(this.visit(node.bodyNode, ctx))
+          if(res.error) return res
+        }
+
+        return res.success(null)
+      },
+      WhileNode: (node, ctx) => {
+        let res = new RuntimeResult()
+        
+        while (true) {
+          let condition = res.register(this.visit(node.conditionNode, ctx))
+          if(res.error) return res
+          
+          if(!condition.isTrue()) break
+          
+          res.register(this.visit(node.bodyNode, ctx))
+          if(res.error) return res
+        }
+
+        return res.success(null)
+      }
     }
   }
 
