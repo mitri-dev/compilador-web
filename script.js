@@ -21,6 +21,10 @@ class Position {
   current() {
     return {index: this.index, line: this.line, col: this.col}
   }
+
+  copy() {
+    return new Position(this.index, this.line, this.col)
+  }
 }
 
 /////////////////////////////////////////////
@@ -410,6 +414,13 @@ class Number {
     return this.value != 0
   }
 
+  copy() {
+    let copy = new Number(this.value)
+    copy.setPosition(this.position)
+    copy.setContext(this.context)
+    return copy
+  }
+
   rep() {
     return `${this.value}`
   }
@@ -446,6 +457,13 @@ class StringType {
 
   isTrue() {
     return this.value.length > 0
+  }
+
+  copy() {
+    let copy = new StringType(this.value)
+    copy.setPosition(this.position)
+    copy.setContext(this.context)
+    return copy
   }
 
   rep() {
@@ -517,13 +535,67 @@ class ListType {
   }
 }
 
-class FunctionType {
-  constructor(name, bodyNode, argNames) {
+class BaseFunctionType {
+  constructor(name) {
     this.name = name || '&lt;anonimo&gt;'
-    this.bodyNode = bodyNode
-    this.argNames = argNames
     this.setPosition()
     this.setContext()
+  }
+
+  setPosition(position = null) {
+    this.position = position
+    return this
+  }
+
+  setContext(context = null) {
+    this.context = context
+    return this
+  }
+
+  generateNewContext() {
+    let newContext = new Context(this.name, this.context, this.position)
+    newContext.symbolTable = new SymbolTable(newContext.parent.symbolTable)
+    return newContext
+  }
+
+  checkArgs(argNames, args) {
+    let res = new RuntimeResult()
+    if(args.length > argNames.length) {
+      return res.failure(new Error(this.position, 'Muchos argumentos introducidos', this.name).setContext(this.context))
+    }
+
+    if(args.length < argNames.length) {
+      return res.failure(new Error(this.position, 'Pocos argumentos introducidos', this.name).setContext(this.context))
+    }
+
+    return res.success(null)
+  }
+
+  populateArgs(argNames, args, execCtx) {
+    for (let i = 0; i < args.length; i++) {
+      let argValue = args[i];
+      let argName = argNames[i];
+
+      argValue.setContext(execCtx)
+      execCtx.symbolTable.set(argName, argValue)
+    }
+  }
+
+  checkAndPopulateArgs(argNames, args, execCtx) {
+    let res = new RuntimeResult()
+    res.register(this.checkArgs(argNames,args))
+    if(res.error) return res
+    this.populateArgs(argNames, args, execCtx)
+    return res.success(null)
+  }
+
+}
+
+class FunctionType extends BaseFunctionType {
+  constructor(name, bodyNode, argNames) {
+    super(name)
+    this.bodyNode = bodyNode
+    this.argNames = argNames
   }
 
   setPosition(position = null) {
@@ -539,34 +611,76 @@ class FunctionType {
   execute(args) {
     let res = new RuntimeResult()
     let interpreter = new Interpreter()
+    let execCtx = this.generateNewContext()
 
-    let newContext = new Context(this.name, this.context, this.position)
-    newContext.symbolTable = new SymbolTable(newContext.parent.symbolTable)
+    res.register(this.checkAndPopulateArgs(this.argNames, args, execCtx))
+    if(res.error) return res
 
-    if(args.length > this.argNames.length) {
-      return res.failure(new Error(this.position, 'Muchos argumentos introducidos', this.name).setContext(this.context))
-    }
-
-    if(args.length < this.argNames.length) {
-      return res.failure(new Error(this.position, 'Pocos argumentos introducidos', this.name).setContext(this.context))
-    }
-
-    for (let i = 0; i < args.length; i++) {
-      let argValue = args[i];
-      let argName = this.argNames[i];
-
-      argValue.setContext(newContext)
-      newContext.symbolTable.set(argName, argValue)
-    }
-
-    let value = interpreter.visit(this.bodyNode, newContext).value
+    let value = interpreter.visit(this.bodyNode, execCtx).value
     if(res.error) return res
     return res.success(value)
+  }
 
+  copy() {
+    let copy = new FunctionType(this.name, this.bodyNode, this.argNames)
+    copy.setPosition(this.position)
+    copy.setContext(this.context)
+    return copy
   }
 
   rep() {
     return `&lt;function&gt; ${this.name}`
+  }
+}
+
+class BuiltInFunction extends BaseFunctionType {
+  constructor(name) {
+    super(name)
+    this.methodList = {
+      print: {
+        argNames: ['value'],
+        exec: (execCtx) => {
+          return new RuntimeResult().success(execCtx.symbolTable.get('value'))
+        }
+      },
+      now: {
+        argNames: [],
+        exec: (execCtx) => {
+          return new RuntimeResult().success(new StringType(new Date().toLocaleString()))
+        }
+      } 
+    }
+  }
+
+  execute(args) {
+    let res = new RuntimeResult()
+    let execCtx = this.generateNewContext()
+
+    let methodName = this.name
+
+    res.register(this.checkAndPopulateArgs(this.methodList[methodName].argNames, args, execCtx))
+    if(res.error) return res
+    
+    let returnValue
+    if(this.methodList[methodName]) {
+       returnValue  = res.register(this.methodList[methodName].exec(execCtx))
+    } else {
+      return res.failure(new Error(this.position, `Funcion "${methodName}" no definida`, this.name).setContext(this.context))
+    }
+
+    return res.success(returnValue)
+  }
+
+  copy() {
+    let copy = new BuiltInFunction(this.name)
+    copy.setPosition(this.position)
+    copy.setContext(this.context)
+    return copy
+  }
+
+  rep() {
+    return `&lt;built-in function&gt; ${this.name}`
+
   }
 }
 
@@ -1512,6 +1626,7 @@ class Interpreter {
           return res.failure(new Error(node.varNameToken.position, `${varName} no está definida`, node.varNameToken.value).setContext(ctx))
         }
 
+        value = value.copy().setPosition(node.position).setContext(ctx)
         return res.success(value)
         
       },
@@ -1639,6 +1754,7 @@ class Interpreter {
 
         let returnValue = res.register(valueToCall.execute(args))
         if(res.error) return res
+        returnValue = returnValue.copy().setPosition(node.position).setContext(ctx)
         return res.success(returnValue)
       },
     }
@@ -1664,6 +1780,8 @@ let globalSymbolTable = new SymbolTable()
 globalSymbolTable.set('null', new Number(0))
 globalSymbolTable.set('true', new Number(1))
 globalSymbolTable.set('false', new Number(0))
+globalSymbolTable.set('PRINT', new BuiltInFunction('print'))
+globalSymbolTable.set('NOW', new BuiltInFunction('now'))
 function run(text, payload) {
   // Reset Output
   output.innerHTML = ''
@@ -1866,3 +1984,4 @@ document.onkeydown = function() {
 // 6. FUNCTION saludar(persona) => "Hola, " + persona
 // 7. saludar("Andres Molero")
 // 8. FOR i = 1 TO 9 THEN 2 ^ i
+// 9. PRINT(["foo", "bar", "Jose", "Perez"])
