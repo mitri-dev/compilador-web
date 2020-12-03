@@ -49,7 +49,7 @@ class Error {
 ///// CONSTANTS /////////////////////////////
 /////////////////////////////////////////////
 const SKIP = ' \t\n'
-const STRINGSYMBOL = "'"
+const STRINGSYMBOL = '"'
 const DIGITS = '0123456789'
 const LETTERS = 'abcdefghijklmnñopqrstuvwxyzABCDEFGHIJKLMNÑOPQRSTUVWXYZ'
 const CHARSET = []
@@ -81,6 +81,9 @@ const TT = {
   // Funciones
   ',': 'COMMMA',
   '=>': 'ARROW',
+  // Listas
+  '[': 'LSQUARE',
+  ']': 'RSQUARE',
   // Data types
   'identifier': 'IDENTIFIER',
   'int': 'INT',
@@ -222,19 +225,25 @@ class Lexer {
   
   makeString() {
     let string = ''
-    let symbolCount = 0
+    let escapeCharacter = false
     let position = this.position.current()
+    this.advance()
     
-    while (this.current != null && CHARSET.includes(this.current)) {
-      if(this.current === STRINGSYMBOL) symbolCount++
-      string += this.current
-      this.advance()
-      if(symbolCount === 2){
-        return new Token(TT.string, string, position)
+    while (this.current != null && this.current != STRINGSYMBOL || escapeCharacter) {
+      if(escapeCharacter) {
+        string += this.current
+      } else {
+        if(this.current == '\\') {
+          escapeCharacter = true
+        } else {
+          string += this.current
+        }
       }
+      this.advance()
+      escapeCharacter = false
     }
-    this.result.error = true;
-    this.result.tokens = new Error(position, 'Mal Formato', string)
+    this.advance()
+    return new Token(TT.string, string, position) 
   }
 
   makeKeyword() {
@@ -403,6 +412,44 @@ class Number {
   }
 }
 
+class StringType {
+  constructor(value) {
+    this.value = value
+    this.setPosition()
+    this.setContext()
+  }
+
+  setPosition(position = null) {
+    this.position = position
+    return this
+  }
+
+  setContext(context = null) {
+    this.context = context
+    return this
+  }
+
+  addedTo(other) {
+    if(other instanceof StringType) {
+      return {res: new StringType(this.value + other.value).setContext(this.context), err: null}
+    }
+  }
+
+  // multipliedBy(other) {
+  //   if(other instanceof Number) {
+  //     return {res: new StringType(this.value * other.value).setContext(this.context), err: null}
+  //   }
+  // }
+
+  isTrue() {
+    return this.value.length > 0
+  }
+
+  rep() {
+    return `${this.value}`
+  }
+}
+
 class FunctionType {
   constructor(name, bodyNode, argNames) {
     this.name = name || '&lt;anonimo&gt;'
@@ -460,6 +507,21 @@ class FunctionType {
 /////////////////////////////////////////////
 ///// NODES /////////////////////////////////
 /////////////////////////////////////////////
+class StringNode {
+  constructor(token) {
+    this.token = token
+    this.position = token.position
+  }
+   
+  type() {
+    return 'StringNode'
+  }
+
+  rep() {
+    return `${this.token.type}`
+  }
+}
+
 class NumberNode {
   constructor(token) {
     this.token = token
@@ -468,6 +530,21 @@ class NumberNode {
    
   type() {
     return 'NumberNode'
+  }
+
+  rep() {
+    return `${this.token.value}`
+  }
+}
+
+class ListNode {
+  constructor(elementNodes, position) {
+    this.elementNodes = elementNodes
+    this.position = position
+  }
+   
+  type() {
+    return 'ListNode'
   }
 
   rep() {
@@ -772,6 +849,11 @@ class Parser {
       this.res.registerAdvancement()
       this.advance()
       return this.res.success(new NumberNode(token))
+    }
+    if(token.type == TT.string) {
+      this.res.registerAdvancement()
+      this.advance()
+      return this.res.success(new StringNode(token))
 
     } else if(token.type == TT.identifier) {
       this.res.registerAdvancement()
@@ -1170,6 +1252,9 @@ class Interpreter {
         number.setPosition(node.token.position)
         number.setContext(ctx)
         return new RuntimeResult().success(number)
+      },
+      StringNode: (node, ctx) => {
+        return new RuntimeResult().success(new StringType(node.token.value).setPosition(node.token.position).setContext(ctx))
       },
       BinaryOperationNode: (node, ctx) => {
         let res = new RuntimeResult()
@@ -1624,5 +1709,7 @@ document.onkeydown = function() {
 // 1. var a = var b = var c = 10
 // 2. var a = 2 + 8 == 5 + 5
 // 3. var a = 1 == 1 && 2 == 2
-// 4. FUNCTION add(a,b) => a+b
-// 5. add(1,2)
+// 4. FUNCTION sumar(a,b) => a+b
+// 5. sumar(1,2)
+// 6. FUNCTION saludar(persona) => "Hola, " + persona
+// 7. saludar("Andres Molero")
