@@ -78,6 +78,9 @@ const TT = {
   '&&': 'AND',
   '!': 'NOT',
   '||': 'OR',
+  // Funciones
+  ',': 'COMMMA',
+  '=>': 'ARROW',
   // Data types
   'identifier': 'IDENTIFIER',
   'int': 'INT',
@@ -88,19 +91,19 @@ const TT = {
   '': '',
 }
 const KEYWORDS = [
-  'const',
-  'let',
-  'var',
-  'if',
-  'then',
-  'elif',
-  'else',
-  'for',
-  'to',
-  'step',
-  'while',
-  'do',
-  'while',
+  'CONST',
+  'LET',
+  'VAR',
+  'IF',
+  'THEN',
+  'ELIF',
+  'ELSE',
+  'FOR',
+  'TO',
+  'STEP',
+  'WHILE',
+  'DO',
+  'FUNCTION',
 ]
 const OPERATORS = [
   '+',
@@ -238,7 +241,7 @@ class Lexer {
     let word = '';
     let position = this.position.current()
 
-    while (this.current != null && (CHARSET).includes(this.current) && this.current != ' ' && !OPERATORS.includes(this.current)) {
+    while (this.current != null && (CHARSET).includes(this.current) && this.current != ' ' && !OPERATORS.includes(this.current) && this.current != ',') {
       word += this.current
       this.advance()
     }
@@ -291,7 +294,7 @@ class RuntimeResult {
 /////////////////////////////////////////////
 class Number {
   constructor(value) {
-    this.value = +value
+    this.value = parseFloat(value)
     this.setPosition()
     this.setContext()
   }
@@ -399,6 +402,60 @@ class Number {
     return `${this.value}`
   }
 }
+
+class FunctionType {
+  constructor(name, bodyNode, argNames) {
+    this.name = name || '&lt;anonimo&gt;'
+    this.bodyNode = bodyNode
+    this.argNames = argNames
+    this.setPosition()
+    this.setContext()
+  }
+
+  setPosition(position = null) {
+    this.position = position
+    return this
+  }
+
+  setContext(context = null) {
+    this.context = context
+    return this
+  }
+
+  execute(args) {
+    let res = new RuntimeResult()
+    let interpreter = new Interpreter()
+
+    let newContext = new Context(this.name, this.context, this.position)
+    newContext.symbolTable = new SymbolTable(newContext.parent.symbolTable)
+
+    if(args.length > this.argNames.length) {
+      return res.failure(new Error(this.position, 'Muchos argumentos introducidos', this.name).setContext(this.context))
+    }
+
+    if(args.length < this.argNames.length) {
+      return res.failure(new Error(this.position, 'Pocos argumentos introducidos', this.name).setContext(this.context))
+    }
+
+    for (let i = 0; i < args.length; i++) {
+      let argValue = args[i];
+      let argName = this.argNames[i];
+
+      argValue.setContext(newContext)
+      newContext.symbolTable.set(argName, argValue)
+    }
+
+    let value = interpreter.visit(this.bodyNode, newContext).value
+    if(res.error) return res
+    return res.success(value)
+
+  }
+
+  rep() {
+    return `&lt;function&gt; ${this.name}`
+  }
+}
+
 
 /////////////////////////////////////////////
 ///// NODES /////////////////////////////////
@@ -546,6 +603,39 @@ class WhileNode {
   }
 }
 
+class FunctionDefinitionNode {
+  constructor(varNameToken = null, argNameTokens, bodyNode) {
+    this.varNameToken = varNameToken
+    this.argNameTokens = argNameTokens
+    this.bodyNode = bodyNode
+
+    this.position = this.bodyNode.position
+  }
+
+  type() {
+    return 'FunctionDefinitionNode'
+  }
+  rep() {
+    return '(FuncDef)'
+  }
+}
+
+class CallNode {
+  constructor(nodeToCall, argNodes) {
+    this.nodeToCall = nodeToCall
+    this.argNodes = argNodes
+
+    this.position = this.nodeToCall.position
+  }
+
+  type() {
+    return 'CallNode'
+  }
+  rep() {
+    return '(CallNode)'
+  }
+}
+
 /////////////////////////////////////////////
 ///// PARSER ////////////////////////////////
 /////////////////////////////////////////////
@@ -582,7 +672,7 @@ class Parser {
     let cases = []
     let elseCase = null
 
-    if(!this.currentToken.matches('KEYWORD', 'if')) {
+    if(!this.currentToken.matches('KEYWORD', 'IF')) {
       return this.res.failure(new Error(this.currentToken.position, '"if" esperado', this.currentToken.value))
     }
 
@@ -592,7 +682,7 @@ class Parser {
     let condition = this.res.register(this.expression())
     if(this.res.error) return this.res
 
-    if(!this.currentToken.matches('KEYWORD', 'then')) {
+    if(!this.currentToken.matches('KEYWORD', 'THEN')) {
       return this.res.failure(new Error(this.currentToken.position, '"then" esperado', this.currentToken.value))
     }
 
@@ -603,14 +693,14 @@ class Parser {
     if(this.res.error) return this.res
     cases.push([condition, expression])
 
-    while (this.currentToken.matches('KEYWORD', 'elif')) {
+    while (this.currentToken.matches('KEYWORD', 'ELIF')) {
       this.res.registerAdvancement()
       this.advance()
 
       condition = this.res.register(this.expression())
       if(this.res.error) return this.res
 
-      if(!this.currentToken.matches('KEYWORD', 'then')) {
+      if(!this.currentToken.matches('KEYWORD', 'THEN')) {
         return this.res.failure(new Error(this.currentToken.position, '"then" esperado', this.currentToken.value))
       }
 
@@ -622,7 +712,7 @@ class Parser {
       cases.push([condition, expression])
     }
 
-    if(this.currentToken.matches('KEYWORD', 'else')) {
+    if(this.currentToken.matches('KEYWORD', 'ELSE')) {
       this.res.registerAdvancement()
       this.advance()
 
@@ -631,6 +721,47 @@ class Parser {
     }
 
     return this.res.success(new IfNode(cases, elseCase))
+  }
+
+  call = () => {
+    this.res = new ParseResult()
+    let atom = this.res.register(this.atom())
+    if(this.res.error) return this.res
+
+    if(this.currentToken.type == TT['(']) {
+      this.res.registerAdvancement()
+      this.advance()
+      
+      let argNodes = []
+
+      if(this.currentToken.type == TT[')']) {
+        this.res.registerAdvancement()
+        this.advance()
+      } else {
+        argNodes.push(this.res.register(this.expression()))
+
+        if(this.res.error) {
+          return this.res.failure(new Error(this.currentToken.position, '")","VAR", "IF", "FOR", "WHILE", "FUNCTION", "+", "-", o "(" Esperado', this.currentToken.value))
+        }
+
+        while (this.currentToken.type == TT[',']) {
+          this.res.registerAdvancement()
+          this.advance()
+
+          argNodes.push(this.res.register(this.expression()))
+          if(this.res.error) return this.res
+        }
+
+        if(this.currentToken.type != TT[')']) {
+          return this.res.failure(new Error(this.currentToken.position, '"," o ")" Esperado', this.currentToken.value))
+        }
+
+        this.res.registerAdvancement()
+        this.advance()
+      }
+      return this.res.success(new CallNode(atom, argNodes))
+    }
+    return this.res.success(atom)
   }
 
   atom = () => {
@@ -662,20 +793,25 @@ class Parser {
       } else {
         return this.res.failure(new Error(this.currentToken.position, 'Cierre de Parentesis Esperado', this.currentToken.value))
       }      
-    } else if(token.matches('KEYWORD', 'if')) {
+    } else if(token.matches('KEYWORD', 'IF')) {
       let ifExpr = this.res.register(this.ifExpr())
       if(this.res.error) return this.res
       return this.res.success(ifExpr)
 
-    } else if(token.matches('KEYWORD', 'for')) {
+    } else if(token.matches('KEYWORD', 'FOR')) {
       let forExpr = this.res.register(this.forExpr())
       if(this.res.error) return this.res
       return this.res.success(forExpr)
 
-    } else if(token.matches('KEYWORD', 'while')) {
+    } else if(token.matches('KEYWORD', 'WHILE')) {
       let whileExpr = this.res.register(this.whileExpr())
       if(this.res.error) return this.res
       return this.res.success(whileExpr)
+
+    } else if(token.matches('KEYWORD', 'FUNCTION')) {
+      let funcDef = this.res.register(this.funcDef())
+      if(this.res.error) return this.res
+      return this.res.success(funcDef)
     }
 
     return this.res.failure(new Error(token.position, 'INT, FLOAT, IDENTIFIER, "+", "-", o "(" Esperado', token.value))
@@ -683,7 +819,7 @@ class Parser {
   }
 
   power = () => {
-    return this.binaryOperation(this.atom, [TT['^'], ], this.factor)
+    return this.binaryOperation(this.call, [TT['^'], ], this.factor)
   }
  
   factor = () => {
@@ -738,7 +874,7 @@ class Parser {
 
   expression = () => {
     this.res = new ParseResult()
-    if(this.currentToken.matches('KEYWORD', 'var')) {
+    if(this.currentToken.matches('KEYWORD', 'VAR')) {
       this.res.registerAdvancement()
       this.advance()
       
@@ -789,7 +925,7 @@ class Parser {
   forExpr = () => {
     this.res = new ParseResult()
 
-    if(!this.currentToken.matches('KEYWORD', 'for')) {
+    if(!this.currentToken.matches('KEYWORD', 'FOR')) {
       return this.res.failure(new Error(this.currentToken.position, '"for" esperado', this.currentToken.value))
     }
 
@@ -814,7 +950,7 @@ class Parser {
     let startValue = this.res.register(this.expression())
     if(this.res.error) return this.res
     
-    if(!this.currentToken.matches('KEYWORD', 'to')) {
+    if(!this.currentToken.matches('KEYWORD', 'TO')) {
       return this.res.failure(new Error(this.currentToken.position, '"to" esperado', this.currentToken.value))
     }
 
@@ -825,7 +961,7 @@ class Parser {
     if(this.res.error) return this.res
 
     let stepValue;
-    if(this.currentToken.matches('KEYWORD', 'step')) {
+    if(this.currentToken.matches('KEYWORD', 'STEP')) {
       this.res.registerAdvancement()
       this.advance()
 
@@ -835,7 +971,7 @@ class Parser {
       stepValue = null
     }
 
-    if(!this.currentToken.matches('KEYWORD', 'then')) {
+    if(!this.currentToken.matches('KEYWORD', 'THEN')) {
       return this.res.failure(new Error(this.currentToken.position, '"then" esperado', this.currentToken.value))
     }
 
@@ -851,7 +987,7 @@ class Parser {
   whileExpr = () => {
     this.res = new ParseResult()
 
-    if(!this.currentToken.matches('KEYWORD', 'while')) {
+    if(!this.currentToken.matches('KEYWORD', 'WHILE')) {
       return this.res.failure(new Error(this.currentToken.position, '"while" esperado', this.currentToken.value))
     }
 
@@ -861,7 +997,7 @@ class Parser {
     let condition = this.res.register(this.expression())
     if(this.res.error) return this.res
 
-    if(!this.currentToken.matches('KEYWORD', 'then')) {
+    if(!this.currentToken.matches('KEYWORD', 'THEN')) {
       return this.res.failure(new Error(this.currentToken.position, '"then" esperado', this.currentToken.value))
     }
 
@@ -872,6 +1008,77 @@ class Parser {
     if(this.res.error) return this.res
 
     return this.res.success(new WhileNode(condition, body))
+  }
+
+  funcDef = () => {
+    this.res = new ParseResult()
+    
+    if(!this.currentToken.matches('KEYWORD', 'FUNCTION')) {
+      return this.res.failure(new Error(this.currentToken.position, '"function" esperado', this.currentToken.value))
+    }
+
+    this.res.registerAdvancement()
+    this.advance()
+
+    let varNameToken
+    if(this.currentToken.type == TT.identifier) {
+      varNameToken = this.currentToken
+      this.res.registerAdvancement()
+      this.advance()
+      if(this.currentToken.type != TT['(']) {
+        return this.res.failure(new Error(this.currentToken.position, '"(" esperado', this.currentToken.value))
+      }
+    } else {
+      varNameToken = null
+      if(this.currentToken.type != TT['(']) {
+        return this.res.failure(new Error(this.currentToken.position, '"(" o IDENTIFIER esperado', this.currentToken.value))
+      }
+    }
+
+    this.res.registerAdvancement()
+    this.advance()
+    let argNameTokens = []
+
+    if(this.currentToken.type == TT.identifier) {
+      argNameTokens.push(this.currentToken)
+      this.res.registerAdvancement()
+      this.advance()
+      while(this.currentToken.type == TT[',']) {
+        this.res.registerAdvancement()
+        this.advance()
+
+        if(this.currentToken.type != TT.identifier) {
+          return this.res.failure(new Error(this.currentToken.position, 'IDENTIFIER esperado', this.currentToken.value))
+        }
+
+        argNameTokens.push(this.currentToken)
+        this.res.registerAdvancement()
+        this.advance()
+      }
+
+      if(this.currentToken.type != TT[')']) {
+        return this.res.failure(new Error(this.currentToken.position, '")" o "," esperado', this.currentToken.value))
+      }
+    } else {
+      if(this.currentToken.type != TT[')']) {
+        return this.res.failure(new Error(this.currentToken.position, '")" o IDENTIFIER esperado', this.currentToken.value))
+      }
+    }
+    
+    this.res.registerAdvancement()
+    this.advance()
+
+    if(this.currentToken.type != TT['=>']) {
+      return this.res.failure(new Error(this.currentToken.position, '"=>" esperado', this.currentToken.value))
+    }
+
+    this.res.registerAdvancement()
+    this.advance()
+
+    let nodeToReturn = this.res.register(this.expression())
+    if(this.res.error) return this.res
+
+    return this.res.success(new FunctionDefinitionNode(varNameToken, argNameTokens, nodeToReturn))
   }
 }
 
@@ -929,9 +1136,9 @@ class Context {
 ///// SYMBOL TABLE //////////////////////////
 /////////////////////////////////////////////
 class SymbolTable {
-  constructor() {
+  constructor(parent = null) {
     this.symbols = {}
-    this.parent = null
+    this.parent = parent
   }
 
   get(name) {
@@ -1043,6 +1250,7 @@ class Interpreter {
           error = err;
         }
 
+        console.log(result)
         if(error) {
           return res.failure(error)
         } else {
@@ -1173,7 +1381,43 @@ class Interpreter {
         }
 
         return res.success(null)
-      }
+      },
+      FunctionDefinitionNode: (node, ctx) => {
+        let res = new RuntimeResult()
+
+        let funcName = node.varNameToken ? node.varNameToken.value : null 
+        let bodyNode = node.bodyNode
+        let argNames = []
+        console.log(node)
+        for (const argName in node.argNameTokens) {
+            argNames.push(node.argNameTokens[argName].value)
+        }
+        console.log(argNames)
+
+        let funcValue = new FunctionType(funcName, bodyNode, argNames).setContext(ctx).setPosition(node.position)
+
+        if(node.varNameToken) {
+          ctx.symbolTable.set(funcName, funcValue)
+        }
+
+        return res.success(funcValue)
+      },
+      CallNode: (node, ctx) => {
+        let res = new RuntimeResult()
+        let args = []
+
+        let valueToCall = res.register(this.visit(node.nodeToCall, ctx))
+        if(res.error) return res
+
+        for (const argNode in node.argNodes) {
+          args.push(res.register(this.visit(node.argNodes[argNode], ctx)))
+         if(res.error) return res
+        }
+
+        let returnValue = res.register(valueToCall.execute(args))
+        if(res.error) return res
+        return res.success(returnValue)
+      },
     }
   }
 
@@ -1183,8 +1427,6 @@ class Interpreter {
     } else {
       console.log(`Metodo ${node.type()} no definido.`)
     }
-    // Visit Binary Operator
-    // colocar tipos a los nodos
   }
 
 }
@@ -1296,13 +1538,29 @@ function run(text, payload) {
   }
 
   function showInterpreterResult() {
-    const outputDOM = document.createElement('div')
-    outputDOM.classList.add('tokens')
-    let html = '';
-    html += `<p>Resultado</p><p>${interpreterResult.value ? interpreterResult.value.value : '&lt;null&gt;'}</p>`
-    outputDOM.innerHTML = html
-    output.appendChild(outputDOM);
-    output.innerHTML += '<div class="msg">Correcto Análisis Semántico</div>'
+    console.log(interpreterResult)
+    if(interpreterResult.value.argNames) {
+      const outputDOM = document.createElement('div')
+      outputDOM.classList.add('tokens')
+      let html = '';
+      html += `<p>Resultado</p><p>Funcion "${interpreterResult.value.name}" definida</p>`
+      outputDOM.innerHTML = html
+      output.appendChild(outputDOM);
+      output.innerHTML += '<div class="msg">Correcto Análisis Semántico</div>'
+
+    } else {
+      let value = '&lt;null&gt;'
+      if(interpreterResult.value) {
+        value = interpreterResult.value.value
+      }
+      const outputDOM = document.createElement('div')
+      outputDOM.classList.add('tokens')
+      let html = '';
+      html += `<p>Resultado</p><p>${value}</p>`
+      outputDOM.innerHTML = html
+      output.appendChild(outputDOM);
+      output.innerHTML += '<div class="msg">Correcto Análisis Semántico</div>'
+    }
   }
 }
 
@@ -1366,3 +1624,5 @@ document.onkeydown = function() {
 // 1. var a = var b = var c = 10
 // 2. var a = 2 + 8 == 5 + 5
 // 3. var a = 1 == 1 && 2 == 2
+// 4. FUNCTION add(a,b) => a+b
+// 5. add(1,2)
