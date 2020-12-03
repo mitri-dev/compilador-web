@@ -117,6 +117,8 @@ const OPERATORS = [
   '=',
   '(',
   ')',
+  '[',
+  ']',
 ]
 
 const LOGICAL = [
@@ -298,6 +300,7 @@ class RuntimeResult {
     return this
   }
 }
+
 /////////////////////////////////////////////
 ///// VALUES ////////////////////////////////
 /////////////////////////////////////////////
@@ -450,6 +453,70 @@ class StringType {
   }
 }
 
+class ListType {
+  constructor(elements) {
+    this.elements = elements
+    this.setPosition()
+    this.setContext()
+  }
+
+  setPosition(position = null) {
+    this.position = position
+    return this
+  }
+
+  setContext(context = null) {
+    this.context = context
+    return this
+  }
+
+  addedTo(other) {
+    let newList = this.copy()
+    newList.elements.push(other)
+    return {res: newList, err: null}
+  }
+
+  subtractedBy(other) {
+    if(other instanceof Number) {
+      let newList = this.copy()
+      try {
+        newList.elements.splice(other.value,1)
+        return {res: newList, err: null}
+      } catch (error) {
+        return {res: null, err: new Error(this.position, 'Elemento en este indice fuera de los limites', other.value).setContext(this.context)}
+      }
+    }
+  }
+
+  dividedBy(other) {
+    if(other instanceof Number) {
+
+      if(other.value >= this.elements.length || other.value < 0) {
+        console.log('fail')
+        return {res: null, err: new Error(this.position, 'Elemento en este indice fuera de los limites', other.value).setContext(this.context)}
+      } else {
+        return {res: this.elements[other.value], err: null}
+      }
+    }
+  }
+
+  copy() {
+    let copy = new ListType(this.elements)
+    copy.setPosition(this.position)
+    copy.setContext(this.context)
+    return copy
+  }
+
+  rep() {
+    let result = []
+    for (let i = 0; i < this.elements.length; i++) {
+      result.push(this.elements[i].value)
+    }
+    console.log(result)
+    return `[${result.toString()}]`
+  }
+}
+
 class FunctionType {
   constructor(name, bodyNode, argNames) {
     this.name = name || '&lt;anonimo&gt;'
@@ -548,7 +615,7 @@ class ListNode {
   }
 
   rep() {
-    return `${this.token.value}`
+    return `(LIST)`
   }
 }
 
@@ -744,6 +811,52 @@ class Parser {
   // REGLAS GRAMATICALES //
   /////////////////////////
 
+  listExpr = () => {
+    this.res = new ParseResult()
+    let elementNodes = []
+    let position = this.currentToken.position
+
+    if(this.currentToken.type != TT['[']) {
+      return this.res.failure(new Error(this.currentToken.position, '"[" esperado', this.currentToken.value))
+    }
+    
+    this.res.registerAdvancement()
+    this.advance()
+
+    if(this.currentToken.type == TT[']']) {
+      this.res.registerAdvancement()
+      this.advance()
+    } else {
+      elementNodes.push(this.res.register(this.expression()))
+
+      if(this.res.error) {
+        return this.res.failure(new Error(this.currentToken.position, '"]","VAR", "IF", "FOR", "WHILE", "FUNCTION", "+", "-", o "(" Esperado', this.currentToken.value))
+      }
+
+      while (this.currentToken.type == TT[',']) {
+        this.res.registerAdvancement()
+        this.advance()
+
+        elementNodes.push(this.res.register(this.expression()))
+        if(this.res.error) return this.res
+      }
+
+      if(this.currentToken.type != TT[']']) {
+        return this.res.failure(new Error(this.currentToken.position, '"," o "]" Esperado', this.currentToken.value))
+      }
+
+
+      this.res.registerAdvancement()
+      this.advance()
+
+      if(this.currentToken.type == TT['=>']) {
+        console.log('Lista Completada con Flecha')
+      }
+    }
+    console.log('Lista Completada')
+    return this.res.success(new ListNode(elementNodes, position))
+  }
+
   ifExpr = () => {
     this.res = new ParseResult()
     let cases = []
@@ -873,8 +986,14 @@ class Parser {
         return this.res.success(expression)
       
       } else {
-        return this.res.failure(new Error(this.currentToken.position, 'Cierre de Parentesis Esperado', this.currentToken.value))
-      }      
+        return this.res.failure(new Error(this.currentToken.position, '")" Esperado', this.currentToken.value))
+      }     
+
+    } else if(token.type == TT['[']) {
+      let listExpr = this.res.register(this.listExpr())
+      if(this.res.error) return this.res
+      return this.res.success(listExpr)
+
     } else if(token.matches('KEYWORD', 'IF')) {
       let ifExpr = this.res.register(this.ifExpr())
       if(this.res.error) return this.res
@@ -1256,6 +1375,19 @@ class Interpreter {
       StringNode: (node, ctx) => {
         return new RuntimeResult().success(new StringType(node.token.value).setPosition(node.token.position).setContext(ctx))
       },
+      ListNode: (node, ctx) => {
+        let res = new RuntimeResult()
+
+        let elements = []
+
+        for (let i = 0; i < node.elementNodes.length; i++) {
+          const e = node.elementNodes[i];
+          elements.push(res.register(this.visit(e, ctx)))
+          if(res.error) return res
+        }
+        
+        return res.success(new ListType(elements).setContext(ctx).setPosition(node.position))
+      },
       BinaryOperationNode: (node, ctx) => {
         let res = new RuntimeResult()
         let err;
@@ -1349,19 +1481,24 @@ class Interpreter {
         let number = res.register(this.visit(node.node, ctx))
         if(res.error) return res
 
-        err = null;
+        let error = null;
 
         if(node.operatorToken.type === TT['-']) {
-          number = number.multipliedBy(new Number(-1))
+          const {res, err} = number.multipliedBy(new Number(-1))
+          number = res;
+          error = err;
         }
 
         if(node.operatorToken.type === TT['!']) {
-          number = number.not()
+          const {res, err} = number.not()
+          number = res;
+          error = err;
         }
 
-        if(err) {
-          return res.failure(err)
+        if(error) {
+          return res.failure(error)
         } else { 
+          console.log(number)
           number.setPosition(node.position);
           return res.success(number);
         }
@@ -1414,6 +1551,7 @@ class Interpreter {
       },
       ForNode: (node, ctx) => {
         let res = new RuntimeResult()
+        let elements = []
 
         let startNode = res.register(this.visit(node.startNode, ctx))
         if(res.error) return res
@@ -1446,14 +1584,15 @@ class Interpreter {
           ctx.symbolTable.set(node.varNameToken.value, new Number(i))
           i += stepNode.value
 
-          res.register(this.visit(node.bodyNode, ctx))
+          elements.push(res.register(this.visit(node.bodyNode, ctx)))
           if(res.error) return res
         }
 
-        return res.success(null)
+        return res.success(new ListType(elements).setContext(ctx).setPosition(node.position))
       },
       WhileNode: (node, ctx) => {
         let res = new RuntimeResult()
+        let elements = []
         
         while (true) {
           let condition = res.register(this.visit(node.conditionNode, ctx))
@@ -1461,11 +1600,11 @@ class Interpreter {
           
           if(!condition.isTrue()) break
           
-          res.register(this.visit(node.bodyNode, ctx))
+          elements.push(res.register(this.visit(node.bodyNode, ctx)))
           if(res.error) return res
         }
 
-        return res.success(null)
+        return res.success(new ListType(elements).setContext(ctx).setPosition(node.position))
       },
       FunctionDefinitionNode: (node, ctx) => {
         let res = new RuntimeResult()
@@ -1473,11 +1612,10 @@ class Interpreter {
         let funcName = node.varNameToken ? node.varNameToken.value : null 
         let bodyNode = node.bodyNode
         let argNames = []
-        console.log(node)
+
         for (const argName in node.argNameTokens) {
             argNames.push(node.argNameTokens[argName].value)
         }
-        console.log(argNames)
 
         let funcValue = new FunctionType(funcName, bodyNode, argNames).setContext(ctx).setPosition(node.position)
 
@@ -1507,6 +1645,7 @@ class Interpreter {
   }
 
   visit(node, ctx) {
+    console.log(node)
     if(this.visitList[node.type()]) {
       return this.visitList[node.type()](node, ctx)
     } else {
@@ -1623,7 +1762,7 @@ function run(text, payload) {
   }
 
   function showInterpreterResult() {
-    console.log(interpreterResult)
+
     if(interpreterResult.value.argNames) {
       const outputDOM = document.createElement('div')
       outputDOM.classList.add('tokens')
@@ -1632,20 +1771,32 @@ function run(text, payload) {
       outputDOM.innerHTML = html
       output.appendChild(outputDOM);
       output.innerHTML += '<div class="msg">Correcto Análisis Semántico</div>'
+      return
 
-    } else {
-      let value = '&lt;null&gt;'
-      if(interpreterResult.value) {
-        value = interpreterResult.value.value
-      }
+    }
+
+    if(interpreterResult.value.elements) {
       const outputDOM = document.createElement('div')
       outputDOM.classList.add('tokens')
       let html = '';
-      html += `<p>Resultado</p><p>${value}</p>`
+      html += `<p>Resultado</p><p>${interpreterResult.value.rep()}</p>`
       outputDOM.innerHTML = html
       output.appendChild(outputDOM);
       output.innerHTML += '<div class="msg">Correcto Análisis Semántico</div>'
+      return
     }
+    let value = '&lt;null&gt;'
+    if(interpreterResult.value) {
+      value = interpreterResult.value.value
+    }
+    const outputDOM = document.createElement('div')
+    outputDOM.classList.add('tokens')
+    let html = '';
+    html += `<p>Resultado</p><p>${value}</p>`
+    outputDOM.innerHTML = html
+    output.appendChild(outputDOM);
+    output.innerHTML += '<div class="msg">Correcto Análisis Semántico</div>'
+    
   }
 }
 
@@ -1706,10 +1857,12 @@ document.onkeydown = function() {
 
 // Posibles Test Demos
 // 
-// 1. var a = var b = var c = 10
-// 2. var a = 2 + 8 == 5 + 5
-// 3. var a = 1 == 1 && 2 == 2
+// 1. VAR a = VAR b = VAR c = 10
+// 2. VAR a = 2 + 8 == 5 + 5
+// 3. VAR a = 1 == 1 && 2 == 2
+// 3' [a,b,c] 
 // 4. FUNCTION sumar(a,b) => a+b
 // 5. sumar(1,2)
 // 6. FUNCTION saludar(persona) => "Hola, " + persona
 // 7. saludar("Andres Molero")
+// 8. FOR i = 1 TO 9 THEN 2 ^ i
