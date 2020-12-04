@@ -543,9 +543,9 @@ class ListType {
   rep(list) {
     let result = []
     for (let i = 0; i < this.elements.length; i++) {
-      if(this.elements[i].value === undefined) {
+      if(this.elements[i].value || this.elements[i].value == 0) {
         result.push(this.elements[i].value)
-      } else if(this.elements[i].elements === undefined) {
+      } else if(this.elements[i].elements) {
         result.push(this.elements[i].rep(true))
       }
     }
@@ -2321,7 +2321,7 @@ Numeros:
 -5
 
 Strings:
-"Hola que tal"
+"Lorem ipsum dolor sit amet consectetur adipisicing elit. Exercitationem quod tempora, neque eum, itaque fugit quae maiores, illo architecto obcaecati ipsum totam. Veniam ipsum culpa sapiente, cupiditate molestias corporis maxime!"
 
 Arrays:
 ["Hola", 123]
