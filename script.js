@@ -2119,4 +2119,7 @@ FOR i = 1 TO 9 THEN 2 ^ i
 
 VAR i = 0
 WHILE i < 10 THEN VAR i = i + 1
+
+FUNCTION saludar(persona) => "Hola, " + persona
+saludar("Puta")
 */
