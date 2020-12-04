@@ -52,7 +52,7 @@ class Error {
 /////////////////////////////////////////////
 ///// CONSTANTS /////////////////////////////
 /////////////////////////////////////////////
-const SKIP = ' \t\n'
+const SKIP = ' \t'
 const STRINGSYMBOL = '"'
 const DIGITS = '0123456789'
 const LETTERS = 'abcdefghijklmnñopqrstuvwxyzABCDEFGHIJKLMNÑOPQRSTUVWXYZ'
@@ -88,6 +88,8 @@ const TT = {
   // Listas
   '[': 'LSQUARE',
   ']': 'RSQUARE',
+  // Lineas
+  '⁋': 'NEWLINE',
   // Data types
   'identifier': 'IDENTIFIER',
   'int': 'INT',
@@ -143,6 +145,10 @@ class Token {
     this.type = type;
     this.value = value;
     this.position = position
+    
+    this.position.copy = () => {
+      return new Position(this.position.index, this.position.line, this.position.col)
+    }
   }
 
   rep() {
@@ -153,6 +159,7 @@ class Token {
   matches(type, value) {
     return this.type === type && this.value === value;
   }
+
 }
 
 /////////////////////////////////////////////
@@ -177,8 +184,11 @@ class Lexer {
   makeTokens() {
     while (this.current != null && !this.result.error) {
       if (SKIP.includes(this.current)) {
-        // Omite los Espacios, Tabulaciones y Saltos de Linea.
+        // Omite los Espacios, Tabulaciones.
         this.advance()
+      } else if(this.current == '\n') {
+        // Analiza numeros Enteros o Flotantes.
+        this.tokens.push(this.makeNewLine())
       } else if(DIGITS.includes(this.current)) {
         // Analiza numeros Enteros o Flotantes.
         this.tokens.push(this.makeNumber())
@@ -278,6 +288,11 @@ class Lexer {
     this.result.error = true;
     this.result.tokens = new Error(position, 'Mal Formato', result)
   }
+
+  makeNewLine() {
+    this.advance()
+    return new Token(TT['⁋'], '⁋', this.position.current())
+  }
 }
 
 /////////////////////////////////////////////
@@ -360,49 +375,49 @@ class Number {
 
   ee(other) {
     if(other instanceof Number) {
-      return {res: new Number(this.value == other.value).setContext(this.context), err: null}
+      return {res: new Number(+(this.value == other.value)).setContext(this.context), err: null}
     }
   }
   
   ne(other) {
     if(other instanceof Number) {
-      return {res: new Number(this.value != other.value).setContext(this.context), err: null}
+      return {res: new Number(+(this.value != other.value)).setContext(this.context), err: null}
     }
   }
   
   lt(other) {
     if(other instanceof Number) {
-      return {res: new Number(this.value < other.value).setContext(this.context), err: null}
+      return {res: new Number(+(this.value < other.value)).setContext(this.context), err: null}
     }
   }
 
   gt(other) {
     if(other instanceof Number) {
-      return {res: new Number(this.value > other.value).setContext(this.context), err: null}
+      return {res: new Number(+(this.value > other.value)).setContext(this.context), err: null}
     }
   }
 
   lte(other) {
     if(other instanceof Number) {
-      return {res: new Number(this.value <= other.value).setContext(this.context), err: null}
+      return {res: new Number(+(this.value <= other.value)).setContext(this.context), err: null}
     }
   }
 
   gte(other) {
     if(other instanceof Number) {
-      return {res: new Number(this.value >= other.value).setContext(this.context), err: null}
+      return {res: new Number(+(this.value >= other.value)).setContext(this.context), err: null}
     }
   }
 
   and(other) {
     if(other instanceof Number) {
-      return {res: new Number(this.value && other.value).setContext(this.context), err: null}
+      return {res: new Number(+(this.value && other.value)).setContext(this.context), err: null}
     }
   }
 
   or(other) {
     if(other instanceof Number) {
-      return {res: new Number(this.value || other.value).setContext(this.context), err: null}
+      return {res: new Number(+(this.value || other.value)).setContext(this.context), err: null}
     }
   }
 
@@ -510,7 +525,6 @@ class ListType {
     if(other instanceof Number) {
 
       if(other.value >= this.elements.length || other.value < 0) {
-        console.log('fail')
         return {res: null, err: new Error(this.position, 'Elemento en este indice fuera de los limites', other.value).setContext(this.context)}
       } else {
         return {res: this.elements[other.value], err: null}
@@ -525,13 +539,22 @@ class ListType {
     return copy
   }
 
-  rep() {
+  rep(list) {
     let result = []
     for (let i = 0; i < this.elements.length; i++) {
-      result.push(this.elements[i].value)
+      if(this.elements[i].value) {
+        result.push(this.elements[i].value)
+      } else if(this.elements[i].elements) {
+        result.push(this.elements[i].rep(true))
+      }
     }
-    console.log(result)
-    return `[${result.toString()}]`
+    if(list) {
+      return `[${result.toString()}]`
+    } else {
+      console.log(result)
+      return `${result.join('<br>')}`
+
+    }
   }
 }
 
@@ -729,7 +752,12 @@ class ListNode {
   }
 
   rep() {
-    return `(LIST)`
+    console.log(this.elementNodes)
+    let result = []
+    for (let i = 0; i < this.elementNodes.length; i++) {
+      result.push(this.elementNodes[i].rep())
+    }
+    return `[${result.toString()}]`
   }
 }
 
@@ -903,233 +931,311 @@ class Parser {
     this.index = -1
     this.currentToken = null
     this.func
-    this.res
     this.advance()
   }
 
   advance() {
     this.index++
-    if(this.index < this.tokens.length) this.currentToken = this.tokens[this.index]
+    this.updateCurrentToken()
     return this.currentToken
   }
 
+  reverse(amount = 1) {
+    this.index = this.index - amount
+    this.updateCurrentToken()
+    return this.currentToken
+  }
+
+  updateCurrentToken() {
+    if(this.index < this.tokens.length) this.currentToken = this.tokens[this.index]
+  }
+
   parse = () => {
-    this.res = this.expression()
-    if(!this.res.error && this.currentToken.type != TT.eof) {
-      return this.res.failure(new Error(this.currentToken.position, 'Error en Syntaxis', this.currentToken.value))
+    let res = this.statements()
+    if(!res.error && this.currentToken.type != TT.eof) {
+      return res.failure(new Error(this.currentToken.position, 'Error en Syntaxis', this.currentToken.value))
     }
-    return this.res
+    return res
   }
 
   /////////////////////////
   // REGLAS GRAMATICALES //
   /////////////////////////
 
+  statements = () => {
+    let res = new ParseResult()
+    let statements = [];
+    let position = this.currentToken.position.copy()
+
+    while (this.currentToken.type == TT['⁋']) {
+      res.registerAdvancement()
+      this.advance()
+    }
+
+    let statement = res.register(this.expression())
+    if(res.error) return res
+    statements.push(statement)
+
+    let moreStatements = true
+
+    while (true) {
+      let nlCount = 0;
+      while (this.currentToken.type == TT['⁋']) {
+        res.registerAdvancement()
+        this.advance()
+        nlCount = nlCount + 1
+      }
+      if(nlCount == 0) {
+        moreStatements = false
+      }
+      if(!moreStatements) break
+      statement = res.tryRegister(this.expression())
+      if(!statement) {
+        this.reverse(res.toReverseCount)
+        moreStatements = false
+        continue
+      }
+      statements.push(statement)
+    }
+    return res.success(new ListNode(statements, position))
+  }
+
+  expression = () => {
+    let res = new ParseResult()
+    if(this.currentToken.matches('KEYWORD', 'VAR')) {
+      res.registerAdvancement()
+      this.advance()
+      
+      if(this.currentToken.type != TT.identifier) {
+        return res.failure(new Error(this.currentToken.position, 'IDENTIFIER Esperado', this.currentToken.value))
+      }
+      let varName = this.currentToken
+      res.registerAdvancement()
+      this.advance()
+
+      if(this.currentToken.type != TT['=']) {
+        return res.failure(new Error(this.currentToken.position, '"=" Esperado', this.currentToken.value))
+      }
+
+      res.registerAdvancement()
+      this.advance()
+      let expression = res.register(this.expression())
+      if(res.error) return res
+      return res.success(new VarAssignNode(varName, expression))
+    }
+
+    let node = res.register(this.binaryOperation(this.compExpr, [TT['&&'], TT['||']]))
+
+    if(res.error) return res.failure(new Error(this.currentToken.position, '"VAR", "+", "-", o "(" Esperado', this.currentToken.value))
+
+    return res.success(node)
+  }
+
   listExpr = () => {
-    this.res = new ParseResult()
+    let res = new ParseResult()
     let elementNodes = []
     let position = this.currentToken.position
 
     if(this.currentToken.type != TT['[']) {
-      return this.res.failure(new Error(this.currentToken.position, '"[" esperado', this.currentToken.value))
+      return res.failure(new Error(this.currentToken.position, '"[" esperado', this.currentToken.value))
     }
     
-    this.res.registerAdvancement()
+    res.registerAdvancement()
     this.advance()
 
     if(this.currentToken.type == TT[']']) {
-      this.res.registerAdvancement()
+      res.registerAdvancement()
       this.advance()
     } else {
-      elementNodes.push(this.res.register(this.expression()))
+      elementNodes.push(res.register(this.expression()))
 
-      if(this.res.error) {
-        return this.res.failure(new Error(this.currentToken.position, '"]","VAR", "IF", "FOR", "WHILE", "FUNCTION", "+", "-", o "(" Esperado', this.currentToken.value))
+      if(res.error) {
+        return res.failure(new Error(this.currentToken.position, '"]","VAR", "IF", "FOR", "WHILE", "FUNCTION", "+", "-", o "(" Esperado', this.currentToken.value))
       }
 
       while (this.currentToken.type == TT[',']) {
-        this.res.registerAdvancement()
+        res.registerAdvancement()
         this.advance()
 
-        elementNodes.push(this.res.register(this.expression()))
-        if(this.res.error) return this.res
+        elementNodes.push(res.register(this.expression()))
+        if(res.error) return res
       }
 
       if(this.currentToken.type != TT[']']) {
-        return this.res.failure(new Error(this.currentToken.position, '"," o "]" Esperado', this.currentToken.value))
+        return res.failure(new Error(this.currentToken.position, '"," o "]" Esperado', this.currentToken.value))
       }
 
 
-      this.res.registerAdvancement()
+      res.registerAdvancement()
       this.advance()
 
       if(this.currentToken.type == TT['=>']) {
-        console.log('Lista Completada con Flecha')
+        // console.log('Lista Completada con Flecha')
       }
     }
-    console.log('Lista Completada')
-    return this.res.success(new ListNode(elementNodes, position))
+    // console.log('Lista Completada')
+    return res.success(new ListNode(elementNodes, position))
   }
 
   ifExpr = () => {
-    this.res = new ParseResult()
+    res = new ParseResult()
     let cases = []
     let elseCase = null
 
     if(!this.currentToken.matches('KEYWORD', 'IF')) {
-      return this.res.failure(new Error(this.currentToken.position, '"if" esperado', this.currentToken.value))
+      return res.failure(new Error(this.currentToken.position, '"if" esperado', this.currentToken.value))
     }
 
-    this.res.registerAdvancement()
+    res.registerAdvancement()
     this.advance()
 
-    let condition = this.res.register(this.expression())
-    if(this.res.error) return this.res
+    let condition = res.register(this.expression())
+    if(res.error) return res
 
     if(!this.currentToken.matches('KEYWORD', 'THEN')) {
-      return this.res.failure(new Error(this.currentToken.position, '"then" esperado', this.currentToken.value))
+      return res.failure(new Error(this.currentToken.position, '"then" esperado', this.currentToken.value))
     }
 
-    this.res.registerAdvancement()
+    res.registerAdvancement()
     this.advance()
 
-    let expression = this.res.register(this.expression())
-    if(this.res.error) return this.res
+    let expression = res.register(this.expression())
+    if(res.error) return res
     cases.push([condition, expression])
 
     while (this.currentToken.matches('KEYWORD', 'ELIF')) {
-      this.res.registerAdvancement()
+      res.registerAdvancement()
       this.advance()
 
-      condition = this.res.register(this.expression())
-      if(this.res.error) return this.res
+      condition = res.register(this.expression())
+      if(res.error) return res
 
       if(!this.currentToken.matches('KEYWORD', 'THEN')) {
-        return this.res.failure(new Error(this.currentToken.position, '"then" esperado', this.currentToken.value))
+        return res.failure(new Error(this.currentToken.position, '"then" esperado', this.currentToken.value))
       }
 
-      this.res.registerAdvancement()
+      res.registerAdvancement()
       this.advance()
 
-      let expression = this.res.register(this.expression())
-      if(this.res.error) return this.res
+      let expression = res.register(this.expression())
+      if(res.error) return res
       cases.push([condition, expression])
     }
 
     if(this.currentToken.matches('KEYWORD', 'ELSE')) {
-      this.res.registerAdvancement()
+      res.registerAdvancement()
       this.advance()
 
-      elseCase = this.res.register(this.expression())
-      if(this.res.error) return this.res
+      elseCase = res.register(this.expression())
+      if(res.error) return res
     }
 
-    return this.res.success(new IfNode(cases, elseCase))
+    return res.success(new IfNode(cases, elseCase))
   }
 
   call = () => {
-    this.res = new ParseResult()
-    let atom = this.res.register(this.atom())
-    if(this.res.error) return this.res
+    let res = new ParseResult()
+    let atom = res.register(this.atom())
+    if(res.error) return res
 
     if(this.currentToken.type == TT['(']) {
-      this.res.registerAdvancement()
+      res.registerAdvancement()
       this.advance()
       
       let argNodes = []
 
       if(this.currentToken.type == TT[')']) {
-        this.res.registerAdvancement()
+        res.registerAdvancement()
         this.advance()
       } else {
-        argNodes.push(this.res.register(this.expression()))
+        argNodes.push(res.register(this.expression()))
 
-        if(this.res.error) {
-          return this.res.failure(new Error(this.currentToken.position, '")","VAR", "IF", "FOR", "WHILE", "FUNCTION", "+", "-", o "(" Esperado', this.currentToken.value))
+        if(res.error) {
+          return res.failure(new Error(this.currentToken.position, '")","VAR", "IF", "FOR", "WHILE", "FUNCTION", "+", "-", o "(" Esperado', this.currentToken.value))
         }
 
         while (this.currentToken.type == TT[',']) {
-          this.res.registerAdvancement()
+          res.registerAdvancement()
           this.advance()
 
-          argNodes.push(this.res.register(this.expression()))
-          if(this.res.error) return this.res
+          argNodes.push(res.register(this.expression()))
+          if(res.error) return res
         }
 
         if(this.currentToken.type != TT[')']) {
-          return this.res.failure(new Error(this.currentToken.position, '"," o ")" Esperado', this.currentToken.value))
+          return res.failure(new Error(this.currentToken.position, '"," o ")" Esperado', this.currentToken.value))
         }
 
-        this.res.registerAdvancement()
+        res.registerAdvancement()
         this.advance()
       }
-      return this.res.success(new CallNode(atom, argNodes))
+      return res.success(new CallNode(atom, argNodes))
     }
-    return this.res.success(atom)
+    return res.success(atom)
   }
 
   atom = () => {
-    this.res = new ParseResult()
+    let res = new ParseResult()
     let token = this.currentToken
     
     if([TT.int, TT.float].includes(token.type)) {
-      this.res.registerAdvancement()
+      res.registerAdvancement()
       this.advance()
-      return this.res.success(new NumberNode(token))
+      return res.success(new NumberNode(token))
     }
     if(token.type == TT.string) {
-      this.res.registerAdvancement()
+      res.registerAdvancement()
       this.advance()
-      return this.res.success(new StringNode(token))
+      return res.success(new StringNode(token))
 
     } else if(token.type == TT.identifier) {
-      this.res.registerAdvancement()
+      res.registerAdvancement()
       this.advance()
-      return this.res.success(new VarAccessNode(token))
+      return res.success(new VarAccessNode(token))
  
     } else if (token.type === TT['(']) {
-      this.res.registerAdvancement()
+      res.registerAdvancement()
       this.advance()
-      let expression = this.res.register(this.expression())
-      if (this.res.error) {
-        return this.res
+      let expression = res.register(this.expression())
+      if (res.error) {
+        return res
     
       } else if(this.currentToken.type == TT[')']) {
-        this.res.registerAdvancement()
+        res.registerAdvancement()
         this.advance()
-        return this.res.success(expression)
+        return res.success(expression)
       
       } else {
-        return this.res.failure(new Error(this.currentToken.position, '")" Esperado', this.currentToken.value))
+        return res.failure(new Error(this.currentToken.position, '")" Esperado', this.currentToken.value))
       }     
 
     } else if(token.type == TT['[']) {
-      let listExpr = this.res.register(this.listExpr())
-      if(this.res.error) return this.res
-      return this.res.success(listExpr)
+      let listExpr = res.register(this.listExpr())
+      if(res.error) return res
+      return res.success(listExpr)
 
     } else if(token.matches('KEYWORD', 'IF')) {
-      let ifExpr = this.res.register(this.ifExpr())
-      if(this.res.error) return this.res
-      return this.res.success(ifExpr)
+      let ifExpr = res.register(this.ifExpr())
+      if(res.error) return res
+      return res.success(ifExpr)
 
     } else if(token.matches('KEYWORD', 'FOR')) {
-      let forExpr = this.res.register(this.forExpr())
-      if(this.res.error) return this.res
-      return this.res.success(forExpr)
+      let forExpr = res.register(this.forExpr())
+      if(res.error) return res
+      return res.success(forExpr)
 
     } else if(token.matches('KEYWORD', 'WHILE')) {
-      let whileExpr = this.res.register(this.whileExpr())
-      if(this.res.error) return this.res
-      return this.res.success(whileExpr)
+      let whileExpr = res.register(this.whileExpr())
+      if(res.error) return res
+      return res.success(whileExpr)
 
     } else if(token.matches('KEYWORD', 'FUNCTION')) {
-      let funcDef = this.res.register(this.funcDef())
-      if(this.res.error) return this.res
-      return this.res.success(funcDef)
+      let funcDef = res.register(this.funcDef())
+      if(res.error) return res
+      return res.success(funcDef)
     }
 
-    return this.res.failure(new Error(token.position, 'INT, FLOAT, IDENTIFIER, "+", "-", o "(" Esperado', token.value))
+    return res.failure(new Error(token.position, 'INT, FLOAT, IDENTIFIER, "+", "-", o "(" Esperado', token.value))
 
   }
 
@@ -1139,17 +1245,17 @@ class Parser {
  
   factor = () => {
     // Update Parser to start a ParseResult for each method
-    this.res = new ParseResult()
+    let res = new ParseResult()
     let token = this.currentToken
 
     if([TT['+'], TT['-']].includes(token.type)) {
-      this.res.registerAdvancement()
+      res.registerAdvancement()
       this.advance()
-      let factor = this.res.register(this.factor())
-      if(this.res.error) {
-        return this.res
+      let factor = res.register(this.factor())
+      if(res.error) {
+        return res
       } else {
-        return this.res.success(new UnaryOperationNode(token, factor))
+        return res.success(new UnaryOperationNode(token, factor))
       }
     }
 
@@ -1167,233 +1273,202 @@ class Parser {
   }
 
   compExpr = () => {
-    this.res = new ParseResult()
+    let res = new ParseResult()
 
     if(this.currentToken.type == TT['!']) {
       let operationToken = this.currentToken
-      this.res.registerAdvancement()
+      res.registerAdvancement()
       this.advance()
 
-      let node = this.res.register(this.compExpr())
-      if(this.res.error) return this.res
-      return this.res.success(new UnaryOperationNode(operationToken, node))
+      let node = res.register(this.compExpr())
+      if(res.error) return res
+      return res.success(new UnaryOperationNode(operationToken, node))
     }
 
-    let node = this.res.register(this.binaryOperation(this.arithExpr, [TT['=='], TT['!='], TT['<'], TT['>'], TT['>='], TT['<=']]))
+    let node = res.register(this.binaryOperation(this.arithExpr, [TT['=='], TT['!='], TT['<'], TT['>'], TT['>='], TT['<=']]))
 
-    if (this.res.error) {
-      return this.res.failure(new Error(this.currentToken.position, 'INT, FLOAT, IDENTIFIER, "+", "-", "(", "!" Esperado', this.currentToken.value))
+    if (res.error) {
+      return res.failure(new Error(this.currentToken.position, 'INT, FLOAT, IDENTIFIER, "+", "-", "(", "!" Esperado', this.currentToken.value))
     }
-    return this.res.success(node)
-  }
-
-  expression = () => {
-    this.res = new ParseResult()
-    if(this.currentToken.matches('KEYWORD', 'VAR')) {
-      this.res.registerAdvancement()
-      this.advance()
-      
-      if(this.currentToken.type != TT.identifier) {
-        return this.res.failure(new Error(this.currentToken.position, 'IDENTIFIER Esperado', this.currentToken.value))
-      }
-      let varName = this.currentToken
-      this.res.registerAdvancement()
-      this.advance()
-
-      if(this.currentToken.type != TT['=']) {
-        return this.res.failure(new Error(this.currentToken.position, '"=" Esperado', this.currentToken.value))
-      }
-
-      this.res.registerAdvancement()
-      this.advance()
-      let expression = this.res.register(this.expression())
-      if(this.res.error) return this.res
-      return this.res.success(new VarAssignNode(varName, expression))
-    }
-
-    let node = this.res.register(this.binaryOperation(this.compExpr, [TT['&&'], TT['||']]))
-
-    if(this.res.error) return this.res.failure(new Error(this.currentToken.position, '"VAR", "+", "-", o "(" Esperado', this.currentToken.value))
-
-    return this.res.success(node)
+    return res.success(node)
   }
 
   binaryOperation = (func_a, ops, func_b = null) => {
     if(func_b === null) {
       func_b = func_a
     }
-    this.res = new ParseResult()
-    let left = this.res.register(func_a())
-    if(this.res.error) return this.res
+    let res = new ParseResult()
+    let left = res.register(func_a())
+    if(res.error) return res
 
     while (ops.includes(this.currentToken.type) || ops.includes(this.currentToken.type, this.currentToken.value)) {
       let operatorToken = this.currentToken.type
-      this.res.registerAdvancement()
+      res.registerAdvancement()
       this.advance()
-      let right = this.res.register(func_b()) 
-      if(this.res.error) return this.res  
+      let right = res.register(func_b()) 
+      if(res.error) return res  
       left = new BinaryOperationNode(left, operatorToken, right)
     }
-    return this.res.success(left)
+    return res.success(left)
   }
 
   forExpr = () => {
-    this.res = new ParseResult()
+    let res = new ParseResult()
 
     if(!this.currentToken.matches('KEYWORD', 'FOR')) {
-      return this.res.failure(new Error(this.currentToken.position, '"for" esperado', this.currentToken.value))
+      return res.failure(new Error(this.currentToken.position, '"for" esperado', this.currentToken.value))
     }
 
-    this.res.registerAdvancement()
+    res.registerAdvancement()
     this.advance()
 
     if(this.currentToken.type != TT.identifier) {
-      return this.res.failure(new Error(this.currentToken.position, 'IDENTIFIER Esperado', this.currentToken.value))
+      return res.failure(new Error(this.currentToken.position, 'IDENTIFIER Esperado', this.currentToken.value))
     }
 
     let varName = this.currentToken
-    this.res.registerAdvancement()
+    res.registerAdvancement()
     this.advance()
 
     if(this.currentToken.type != TT['=']) {
-      return this.res.failure(new Error(this.currentToken.position, '"=" Esperado', this.currentToken.value))
+      return res.failure(new Error(this.currentToken.position, '"=" Esperado', this.currentToken.value))
     }
 
-    this.res.registerAdvancement()
+    res.registerAdvancement()
     this.advance()
 
-    let startValue = this.res.register(this.expression())
-    if(this.res.error) return this.res
+    let startValue = res.register(this.expression())
+    if(res.error) return res
     
     if(!this.currentToken.matches('KEYWORD', 'TO')) {
-      return this.res.failure(new Error(this.currentToken.position, '"to" esperado', this.currentToken.value))
+      return res.failure(new Error(this.currentToken.position, '"to" esperado', this.currentToken.value))
     }
 
-    this.res.registerAdvancement()
+    res.registerAdvancement()
     this.advance()
 
-    let endValue = this.res.register(this.expression())
-    if(this.res.error) return this.res
+    let endValue = res.register(this.expression())
+    if(res.error) return res
 
     let stepValue;
     if(this.currentToken.matches('KEYWORD', 'STEP')) {
-      this.res.registerAdvancement()
+      res.registerAdvancement()
       this.advance()
 
-      stepValue = this.res.register(this.expression())
-      if(this.res.error) return this.res
+      stepValue = res.register(this.expression())
+      if(res.error) return res
     } else {
       stepValue = null
     }
 
     if(!this.currentToken.matches('KEYWORD', 'THEN')) {
-      return this.res.failure(new Error(this.currentToken.position, '"then" esperado', this.currentToken.value))
+      return res.failure(new Error(this.currentToken.position, '"then" esperado', this.currentToken.value))
     }
 
-    this.res.registerAdvancement()
+    res.registerAdvancement()
     this.advance()
 
-    let body = this.res.register(this.expression())
-    if(this.res.error) return this.res
+    let body = res.register(this.expression())
+    if(res.error) return res
 
-    return this.res.success(new ForNode(varName, startValue, endValue, stepValue, body))
+    return res.success(new ForNode(varName, startValue, endValue, stepValue, body))
   }
 
   whileExpr = () => {
-    this.res = new ParseResult()
+    let res = new ParseResult()
 
     if(!this.currentToken.matches('KEYWORD', 'WHILE')) {
-      return this.res.failure(new Error(this.currentToken.position, '"while" esperado', this.currentToken.value))
+      return res.failure(new Error(this.currentToken.position, '"while" esperado', this.currentToken.value))
     }
 
-    this.res.registerAdvancement()
+    res.registerAdvancement()
     this.advance()
 
-    let condition = this.res.register(this.expression())
-    if(this.res.error) return this.res
+    let condition = res.register(this.expression())
+    if(res.error) return res
 
     if(!this.currentToken.matches('KEYWORD', 'THEN')) {
-      return this.res.failure(new Error(this.currentToken.position, '"then" esperado', this.currentToken.value))
+      return res.failure(new Error(this.currentToken.position, '"then" esperado', this.currentToken.value))
     }
 
-    this.res.registerAdvancement()
+    res.registerAdvancement()
     this.advance()
 
-    let body = this.res.register(this.expression())
-    if(this.res.error) return this.res
+    let body = res.register(this.expression())
+    if(res.error) return res
 
-    return this.res.success(new WhileNode(condition, body))
+    return res.success(new WhileNode(condition, body))
   }
 
   funcDef = () => {
-    this.res = new ParseResult()
+    let res = new ParseResult()
     
     if(!this.currentToken.matches('KEYWORD', 'FUNCTION')) {
-      return this.res.failure(new Error(this.currentToken.position, '"function" esperado', this.currentToken.value))
+      return res.failure(new Error(this.currentToken.position, '"function" esperado', this.currentToken.value))
     }
 
-    this.res.registerAdvancement()
+    res.registerAdvancement()
     this.advance()
 
     let varNameToken
     if(this.currentToken.type == TT.identifier) {
       varNameToken = this.currentToken
-      this.res.registerAdvancement()
+      res.registerAdvancement()
       this.advance()
       if(this.currentToken.type != TT['(']) {
-        return this.res.failure(new Error(this.currentToken.position, '"(" esperado', this.currentToken.value))
+        return res.failure(new Error(this.currentToken.position, '"(" esperado', this.currentToken.value))
       }
     } else {
       varNameToken = null
       if(this.currentToken.type != TT['(']) {
-        return this.res.failure(new Error(this.currentToken.position, '"(" o IDENTIFIER esperado', this.currentToken.value))
+        return res.failure(new Error(this.currentToken.position, '"(" o IDENTIFIER esperado', this.currentToken.value))
       }
     }
 
-    this.res.registerAdvancement()
+    res.registerAdvancement()
     this.advance()
     let argNameTokens = []
 
     if(this.currentToken.type == TT.identifier) {
       argNameTokens.push(this.currentToken)
-      this.res.registerAdvancement()
+      res.registerAdvancement()
       this.advance()
       while(this.currentToken.type == TT[',']) {
-        this.res.registerAdvancement()
+        res.registerAdvancement()
         this.advance()
 
         if(this.currentToken.type != TT.identifier) {
-          return this.res.failure(new Error(this.currentToken.position, 'IDENTIFIER esperado', this.currentToken.value))
+          return res.failure(new Error(this.currentToken.position, 'IDENTIFIER esperado', this.currentToken.value))
         }
 
         argNameTokens.push(this.currentToken)
-        this.res.registerAdvancement()
+        res.registerAdvancement()
         this.advance()
       }
 
       if(this.currentToken.type != TT[')']) {
-        return this.res.failure(new Error(this.currentToken.position, '")" o "," esperado', this.currentToken.value))
+        return res.failure(new Error(this.currentToken.position, '")" o "," esperado', this.currentToken.value))
       }
     } else {
       if(this.currentToken.type != TT[')']) {
-        return this.res.failure(new Error(this.currentToken.position, '")" o IDENTIFIER esperado', this.currentToken.value))
+        return res.failure(new Error(this.currentToken.position, '")" o IDENTIFIER esperado', this.currentToken.value))
       }
     }
     
-    this.res.registerAdvancement()
+    res.registerAdvancement()
     this.advance()
 
     if(this.currentToken.type != TT['=>']) {
-      return this.res.failure(new Error(this.currentToken.position, '"=>" esperado', this.currentToken.value))
+      return res.failure(new Error(this.currentToken.position, '"=>" esperado', this.currentToken.value))
     }
 
-    this.res.registerAdvancement()
+    res.registerAdvancement()
     this.advance()
 
-    let nodeToReturn = this.res.register(this.expression())
-    if(this.res.error) return this.res
+    let nodeToReturn = res.register(this.expression())
+    if(res.error) return res
 
-    return this.res.success(new FunctionDefinitionNode(varNameToken, argNameTokens, nodeToReturn))
+    return res.success(new FunctionDefinitionNode(varNameToken, argNameTokens, nodeToReturn))
   }
 }
 
@@ -1404,20 +1479,32 @@ class ParseResult {
   constructor(error = null, node = null) {
     this.error = error
     this.node = node
+    this.lastRegisteredAdvanceCount = 0
     this.advanceCount = 0
+    this.toReverseCount = 0
   }
 
   registerAdvancement() {
+    this.lastRegisteredAdvanceCount = 1
     this.advanceCount = this.advanceCount + 1
   }
 
   register(res) {
+    this.lastRegisteredAdvanceCount = res.advanceCount
     this.advanceCount = this.advanceCount + res.advanceCount
     if(res.error) {
       this.error = res.error
     } else {
       return res
     }
+  }
+
+  tryRegister(res) {
+    if(res.error) {
+      this.toReverseCount = res.advanceCount
+      return null
+    }
+    return this.register(res)
   }
 
   success(node) {
@@ -1581,7 +1668,6 @@ class Interpreter {
           error = err;
         }
 
-        console.log(result)
         if(error) {
           return res.failure(error)
         } else {
@@ -1612,7 +1698,6 @@ class Interpreter {
         if(error) {
           return res.failure(error)
         } else { 
-          console.log(number)
           number.setPosition(node.position);
           return res.success(number);
         }
@@ -1761,7 +1846,6 @@ class Interpreter {
   }
 
   visit(node, ctx) {
-    console.log(node)
     if(this.visitList[node.type()]) {
       return this.visitList[node.type()](node, ctx)
     } else {
@@ -1880,7 +1964,7 @@ function run(text, payload) {
   }
 
   function showInterpreterResult() {
-
+    console.log(interpreterResult)
     if(interpreterResult.value.argNames) {
       const outputDOM = document.createElement('div')
       outputDOM.classList.add('tokens')
@@ -1985,3 +2069,12 @@ document.onkeydown = function() {
 // 7. saludar("Andres Molero")
 // 8. FOR i = 1 TO 9 THEN 2 ^ i
 // 9. PRINT(["foo", "bar", "Jose", "Perez"])
+/*
+VAR a = VAR b = VAR c = 10
+[[[[[[5]]],NOW()]],b,c] 
+FUNCTION saludar(persona) => "Hola, " + persona
+saludar("Mami")
+FOR i = 1 TO 9 THEN 2 ^ i
+VAR i = 0
+WHILE i < 10 THEN VAR i = i + 1
+*/
