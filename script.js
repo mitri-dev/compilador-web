@@ -113,6 +113,7 @@ const KEYWORDS = [
   'WHILE',
   'DO',
   'FUNCTION',
+  'END',
 ]
 const OPERATORS = [
   '+',
@@ -615,10 +616,11 @@ class BaseFunctionType {
 }
 
 class FunctionType extends BaseFunctionType {
-  constructor(name, bodyNode, argNames) {
+  constructor(name, bodyNode, argNames, returnNull) {
     super(name)
     this.bodyNode = bodyNode
     this.argNames = argNames
+    this.returnNull = returnNull
   }
 
   setPosition(position = null) {
@@ -641,11 +643,16 @@ class FunctionType extends BaseFunctionType {
 
     let value = interpreter.visit(this.bodyNode, execCtx).value
     if(res.error) return res
-    return res.success(value)
+    if(this.returnNull) {
+      return res.success(value)
+      // return res.success(new Number(0))
+    } else {
+      return res.success(value)
+    }
   }
 
   copy() {
-    let copy = new FunctionType(this.name, this.bodyNode, this.argNames)
+    let copy = new FunctionType(this.name, this.bodyNode, this.argNames, this.returnNull)
     copy.setPosition(this.position)
     copy.setContext(this.context)
     return copy
@@ -676,6 +683,13 @@ class BuiltInFunction extends BaseFunctionType {
         argNames: [],
         exec: (execCtx) => {
           return new RuntimeResult().success(new StringType('20pts'))
+        }
+      },
+      len: {
+        argNames: ['array'],
+        exec: (execCtx) => {
+          console.log()
+          return new RuntimeResult().success(new Number(execCtx.symbolTable.get('array').elements.length))
         }
       } 
     }
@@ -758,7 +772,6 @@ class ListNode {
   }
 
   rep() {
-    console.log(this.elementNodes)
     let result = []
     for (let i = 0; i < this.elementNodes.length; i++) {
       result.push(this.elementNodes[i].rep())
@@ -861,12 +874,13 @@ class IfNode {
 }
 
 class ForNode {
-  constructor(varNameToken, startNode, endNode, stepNode = null, bodyNode) {
+  constructor(varNameToken, startNode, endNode, stepNode = null, bodyNode, returnNull) {
     this.varNameToken = varNameToken
     this.startNode = startNode
     this.endNode = endNode
     this.stepNode = stepNode
     this.bodyNode = bodyNode
+    this.returnNull = returnNull
 
     this.position = this.varNameToken.position
   }
@@ -880,9 +894,10 @@ class ForNode {
 }
 
 class WhileNode {
-  constructor(conditionNode, bodyNode) {
+  constructor(conditionNode, bodyNode, returnNull) {
     this.conditionNode = conditionNode
     this.bodyNode = bodyNode
+    this.returnNull = returnNull
 
     this.position = this.conditionNode.position
   }
@@ -896,10 +911,11 @@ class WhileNode {
 }
 
 class FunctionDefinitionNode {
-  constructor(varNameToken = null, argNameTokens, bodyNode) {
+  constructor(varNameToken = null, argNameTokens, bodyNode, returnNull) {
     this.varNameToken = varNameToken
     this.argNameTokens = argNameTokens
     this.bodyNode = bodyNode
+    this.returnNull = returnNull
 
     this.position = this.bodyNode.position
   }
@@ -1085,11 +1101,78 @@ class Parser {
 
   ifExpr = () => {
     let res = new ParseResult()
-    let cases = []
+    let allCases = res.register(this.ifExprCases('IF'))
+    if(res.error) return res
+    const cases = allCases[0]
+    const elseCase = allCases[1]
+    return res.success(new IfNode(cases, elseCase))
+  }
+
+  ifExprB = () => {
+    return this.ifExprCases('ELIF')
+  }
+
+  ifExprC = () => {
+    let res = new ParseResult()
     let elseCase = null
 
-    if(!this.currentToken.matches('KEYWORD', 'IF')) {
-      return res.failure(new Error(this.currentToken.position, '"if" esperado', this.currentToken.value))
+    if(this.currentToken.matches('KEYWORD', 'ELSE')) {
+      res.registerAdvancement()
+      this.advance()
+
+      if(this.currentToken.type == TT['⁋']) {
+        res.registerAdvancement()
+        this.advance()
+
+        let statements = res.register(this.statements())
+        if(res.error) return res
+        elseCase = [statements, true]
+
+        if(this.currentToken.matches('KEYWORD', 'END')) {
+          res.registerAdvancement()
+          this.advance()
+        } else {
+          return res.failure(new Error(this.currentToken.position, `"END" esperado`, this.currentToken.value))
+        }
+      } else {
+        let expression = res.register(this.expression())
+        if(res.error) return res
+        elseCase = [expression, false]
+      }
+    }
+    return res.success(elseCase)
+  }
+
+  ifExprBorC = () => {
+    let res = new ParseResult()
+    let cases = []
+    let elseCase = null
+    let allCases;
+
+    if(this.currentToken.matches('KEYWORD', 'ELIF')) {
+      allCases = res.register(this.ifExprB())
+      if(res.error) return res
+      const newCases = allCases[0]
+      const newElseCase = allCases[1]
+      elseCase = newElseCase
+      cases.concat(newCases)
+    } else {
+      elseCase = res.register(this.ifExprC())
+      console.log(elseCase)
+      if(res.error) return res
+    }
+    return res.success([cases, elseCase])
+
+  }
+
+  ifExprCases = (caseKeyword) => {
+    let res = new ParseResult()
+    let cases = []
+    let elseCase = null
+    let allCases;
+
+    if(!this.currentToken.matches('KEYWORD', caseKeyword)) {
+      return res.failure(new Error(this.currentToken.position, `"${caseKeyword}" esperado`, this.currentToken.value))
     }
 
     res.registerAdvancement()
@@ -1104,39 +1187,40 @@ class Parser {
 
     res.registerAdvancement()
     this.advance()
-
-    let expression = res.register(this.expression())
-    if(res.error) return res
-    cases.push([condition, expression])
-
-    while (this.currentToken.matches('KEYWORD', 'ELIF')) {
+    
+    if(this.currentToken.type == TT['⁋']) {
       res.registerAdvancement()
       this.advance()
 
-      condition = res.register(this.expression())
+      let statements = res.register(this.statements())
       if(res.error) return res
-
-      if(!this.currentToken.matches('KEYWORD', 'THEN')) {
-        return res.failure(new Error(this.currentToken.position, '"then" esperado', this.currentToken.value))
+      cases.push([condition, statements, true])
+      if(this.currentToken.matches('KEYWORD', 'END')) {
+        res.registerAdvancement()
+        this.advance()
+      } else {
+        allCases = res.register(this.ifExprBorC())
+        if(res.error) return res
+        console.log(allCases)
+        const newCases = allCases[0]
+        const newElseCase = allCases[1]
+        elseCase = newElseCase
+        cases.concat(newCases)
       }
-
-      res.registerAdvancement()
-      this.advance()
-
+    } else {
       let expression = res.register(this.expression())
       if(res.error) return res
-      cases.push([condition, expression])
-    }
+      cases.push([condition, expression, false])
 
-    if(this.currentToken.matches('KEYWORD', 'ELSE')) {
-      res.registerAdvancement()
-      this.advance()
-
-      elseCase = res.register(this.expression())
+      allCases = res.register(this.ifExprBorC())
       if(res.error) return res
+      const newCases = allCases[0]
+      const newElseCase = allCases[1]
+      elseCase = newElseCase
+      cases.concat(newCases)
     }
-
-    return res.success(new IfNode(cases, elseCase))
+    console.log(cases, elseCase)
+    return res.success([cases, elseCase])
   }
 
   call = () => {
@@ -1374,10 +1458,27 @@ class Parser {
     res.registerAdvancement()
     this.advance()
 
+    if(this.currentToken.type == TT['⁋']) {
+      res.registerAdvancement()
+      this.advance()
+
+      let body = res.register(this.statements())
+      if(res.error) return res
+
+      if(!this.currentToken.matches('KEYWORD', 'END')) {
+        return res.failure(new Error(this.currentToken.position, `"END" esperado`, this.currentToken.value))
+      }
+
+      res.registerAdvancement()
+      this.advance()
+
+      return res.success(new ForNode(varName, startValue, endValue, stepValue, body, true))
+    }
+
     let body = res.register(this.expression())
     if(res.error) return res
 
-    return res.success(new ForNode(varName, startValue, endValue, stepValue, body))
+    return res.success(new ForNode(varName, startValue, endValue, stepValue, body, false))
   }
 
   whileExpr = () => {
@@ -1400,10 +1501,28 @@ class Parser {
     res.registerAdvancement()
     this.advance()
 
+    if(this.currentToken.type == TT['⁋']) {
+      res.registerAdvancement()
+      this.advance()
+
+      let body = res.register(this.statements())
+      if(res.error) return res
+
+      if(!this.currentToken.matches('KEYWORD', 'END')) {
+        return res.failure(new Error(this.currentToken.position, `"END" esperado`, this.currentToken.value))
+      }
+
+      res.registerAdvancement()
+      this.advance()
+
+      return res.success(new WhileNode(condition, body, true))
+    }
+
+
     let body = res.register(this.expression())
     if(res.error) return res
 
-    return res.success(new WhileNode(condition, body))
+    return res.success(new WhileNode(condition, body, false))
   }
 
   funcDef = () => {
@@ -1464,17 +1583,34 @@ class Parser {
     res.registerAdvancement()
     this.advance()
 
-    if(this.currentToken.type != TT['=>']) {
-      return res.failure(new Error(this.currentToken.position, '"=>" esperado', this.currentToken.value))
+    if(this.currentToken.type == TT['=>']) {
+      res.registerAdvancement()
+      this.advance()
+      
+      let nodeToReturn = res.register(this.expression())
+      if(res.error) return res
+
+      return res.success(new FunctionDefinitionNode(varNameToken, argNameTokens, nodeToReturn, false))
+    }
+
+    if(this.currentToken.type != TT['⁋']) {
+      return res.failure(new Error(this.currentToken.position, '"=>" o "⁋" esperado', this.currentToken.value))
     }
 
     res.registerAdvancement()
     this.advance()
 
-    let nodeToReturn = res.register(this.expression())
+    let body = res.register(this.statements())
     if(res.error) return res
 
-    return res.success(new FunctionDefinitionNode(varNameToken, argNameTokens, nodeToReturn))
+    if(!this.currentToken.matches('KEYWORD', 'END')) {
+      return res.failure(new Error(this.currentToken.position, `"END" esperado`, this.currentToken.value))
+    }
+
+    res.registerAdvancement()
+    this.advance()
+
+    return res.success(new FunctionDefinitionNode(varNameToken, argNameTokens, body, true))
   }
 }
 
@@ -1737,22 +1873,32 @@ class Interpreter {
         for(let i = 0; i < node.cases.length; i++) {
           const condition = node.cases[i][0];
           const expression = node.cases[i][1];
+          const returnNull = node.cases[i][2];
+          console.log(returnNull)
           let conditionValue = res.register(this.visit(condition, ctx))
           if(res.error) return res
           
           if(conditionValue.isTrue()) {
             let exprValue = res.register(this.visit(expression, ctx))
             if(res.error) return res
-            return res.success(exprValue)
+            if(returnNull) {
+              return res.success(exprValue)
+              // return res.success(new Number(0))
+            } { 
+              return res.success(exprValue)
+            }
           }
 
           if(node.elseCase) {
-            let elseValue = res.register(this.visit(node.elseCase, ctx))
+            let expression = node.elseCase[0]
+            let returnNull = node.elseCase[1]
+            console.log(returnNull)
+            let elseValue = res.register(this.visit(expression, ctx))
             if(res.error) return res
             return res.success(elseValue)
           }
 
-          return res.success(null)
+          return res.success(new Number(0))
         }
       },
       ForNode: (node, ctx) => {
@@ -1793,8 +1939,12 @@ class Interpreter {
           elements.push(res.register(this.visit(node.bodyNode, ctx)))
           if(res.error) return res
         }
-
-        return res.success(new ListType(elements).setContext(ctx).setPosition(node.position))
+        if(node.returnNull) {
+          return res.success(new ListType(elements).setContext(ctx).setPosition(node.position))
+          // return res.success(new Number(0))
+        } { 
+          return res.success(new ListType(elements).setContext(ctx).setPosition(node.position))
+        }
       },
       WhileNode: (node, ctx) => {
         let res = new RuntimeResult()
@@ -1810,7 +1960,12 @@ class Interpreter {
           if(res.error) return res
         }
 
-        return res.success(new ListType(elements).setContext(ctx).setPosition(node.position))
+        if(node.returnNull) {
+          return res.success(new ListType(elements).setContext(ctx).setPosition(node.position))
+          // return res.success(new Number(0))
+        } { 
+          return res.success(new ListType(elements).setContext(ctx).setPosition(node.position))
+        }
       },
       FunctionDefinitionNode: (node, ctx) => {
         let res = new RuntimeResult()
@@ -1823,7 +1978,7 @@ class Interpreter {
             argNames.push(node.argNameTokens[argName].value)
         }
 
-        let funcValue = new FunctionType(funcName, bodyNode, argNames).setContext(ctx).setPosition(node.position)
+        let funcValue = new FunctionType(funcName, bodyNode, argNames, node.returnNull).setContext(ctx).setPosition(node.position)
 
         if(node.varNameToken) {
           ctx.symbolTable.set(funcName, funcValue)
@@ -1852,6 +2007,7 @@ class Interpreter {
   }
 
   visit(node, ctx) {
+    console.log(node)
     if(this.visitList[node.type()]) {
       return this.visitList[node.type()](node, ctx)
     } else {
@@ -1873,6 +2029,7 @@ globalSymbolTable.set('false', new Number(0))
 globalSymbolTable.set('PRINT', new BuiltInFunction('print'))
 globalSymbolTable.set('NOW', new BuiltInFunction('now'))
 globalSymbolTable.set('NOTA', new BuiltInFunction('nota'))
+globalSymbolTable.set('LEN', new BuiltInFunction('len'))
 function run(text, payload) {
   // Reset Output
   output.innerHTML = ''
@@ -2171,4 +2328,19 @@ IF a == b THEN "SI" ELSE "NO"
 
 a("Jorge") + " Mitri"
 VAR a = FUNCTION saludar(persona) => "Hola, " + persona
+
+
+IF 1 == 1 THEN 
+  "SI"  
+ELSE
+  "NO"
+END
+
+FUNCTION contar(numeros)
+  FOR i = 0 TO LEN(numeros) THEN
+  numeros / i
+  END
+END
+
+contar([1,2,3])
 */
