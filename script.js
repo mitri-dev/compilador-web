@@ -1887,6 +1887,7 @@ function run(text, payload) {
   }
   if(payload === 'lexer') {
     if(lexerResult.tokens.length <= 1) {
+      playSound('lexer')
       output.innerHTML = '&lt;empty&gt;'
       output.innerHTML += '<div class="msg">Correcto Análisis Léxico</div>'
       return
@@ -1901,10 +1902,12 @@ function run(text, payload) {
 
   if (parserResult.error) {
     if(lexerResult.tokens.length <= 1 && payload == 'parser') {
+      playSound('parser-2')
       output.innerHTML = '&lt;empty&gt;'
       output.innerHTML += '<div class="msg">Correcto Análisis Sintáctico</div>'
       return
     } else if (lexerResult.tokens.length <= 1 && payload == 'interpreter') {
+      playSound('interpreter-2')
       output.innerHTML = '&lt;empty&gt;'
       output.innerHTML += '<div class="msg">Correcto Análisis Semántico</div>'
       return
@@ -2119,4 +2122,53 @@ FOR i = 1 TO 9 THEN 2 ^ i
 
 VAR i = 0
 WHILE i < 10 THEN VAR i = i + 1
+
+// INFORMACION
+Numeros:
+5
+29.99
+-5
+
+Strings:
+"Hola que tal"
+
+Arrays:
+["Hola", 123]
+
+Operadores Logicos:
+1 == 1
+1 != 0
+TRUE
+FALSE
+<
+<=
+>
+>=
+||
+&&
+
+Varibles:
+VAR a = 5
+VAR b = "Jorge"
+VAR c = 5 == 6
+
+Funciones built-in:
+NOTA()
+PRINT("Saludos")
+NOW()
+
+Operaciones:
+FUNCTION saludar(persona) => "Hola, " + persona
+saludar("Andres Molero")
+
+FOR i = 1 TO 9 THEN 2 ^ i
+
+VAR i = 0
+WHILE i < 10 THEN VAR i = i + 1
+
+VAR a = VAR b = 10
+IF a == b THEN "SI" ELSE "NO"
+
+a("Jorge") + " Mitri"
+VAR a = FUNCTION saludar(persona) => "Hola, " + persona
 */
