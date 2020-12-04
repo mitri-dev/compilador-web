@@ -671,6 +671,12 @@ class BuiltInFunction extends BaseFunctionType {
         exec: (execCtx) => {
           return new RuntimeResult().success(new StringType(new Date().toLocaleString()))
         }
+      }, 
+      nota: {
+        argNames: [],
+        exec: (execCtx) => {
+          return new RuntimeResult().success(new StringType('20pts'))
+        }
       } 
     }
   }
@@ -1866,6 +1872,7 @@ globalSymbolTable.set('true', new Number(1))
 globalSymbolTable.set('false', new Number(0))
 globalSymbolTable.set('PRINT', new BuiltInFunction('print'))
 globalSymbolTable.set('NOW', new BuiltInFunction('now'))
+globalSymbolTable.set('NOTA', new BuiltInFunction('nota'))
 function run(text, payload) {
   // Reset Output
   output.innerHTML = ''
@@ -1879,6 +1886,11 @@ function run(text, payload) {
     return
   }
   if(payload === 'lexer') {
+    if(lexerResult.tokens.length <= 1) {
+      output.innerHTML = '&lt;empty&gt;'
+      output.innerHTML += '<div class="msg">Correcto Análisis Léxico</div>'
+      return
+    }
     showLexerResult()
     return
   }
@@ -1888,6 +1900,15 @@ function run(text, payload) {
   let parserResult = parser.parse()
 
   if (parserResult.error) {
+    if(lexerResult.tokens.length <= 1 && payload == 'parser') {
+      output.innerHTML = '&lt;empty&gt;'
+      output.innerHTML += '<div class="msg">Correcto Análisis Sintáctico</div>'
+      return
+    } else if (lexerResult.tokens.length <= 1 && payload == 'interpreter') {
+      output.innerHTML = '&lt;empty&gt;'
+      output.innerHTML += '<div class="msg">Correcto Análisis Semántico</div>'
+      return
+    }
     showParserError()
     return
   }
@@ -1911,6 +1932,7 @@ function run(text, payload) {
   }
 
   function showLexerError() {
+    playSound('error')
     const outputDOM = document.createElement('div')
     outputDOM.classList.add('tokens')
     let html = '';
@@ -1923,6 +1945,7 @@ function run(text, payload) {
   }
 
   function showLexerResult() {
+    playSound('lexer')
     const outputDOM = document.createElement('div')
     outputDOM.classList.add('tokens')
     let html = '';
@@ -1935,6 +1958,7 @@ function run(text, payload) {
   }
 
   function showParserError() {
+    playSound('error')
     const outputDOM = document.createElement('div')
     outputDOM.classList.add('tokens')
     let html = '';
@@ -1947,11 +1971,13 @@ function run(text, payload) {
   }
 
   function showParserResult() {
+    playSound('parser-1')
     output.innerHTML = parserResult.rep()
     output.innerHTML += '<div class="msg">Correcto Análisis Sintáctico</div>'
   }
 
   function showInterpreterError() {
+    playSound('error')
     const outputDOM = document.createElement('div')
     outputDOM.classList.add('tokens')
     let html = '';
@@ -1964,6 +1990,7 @@ function run(text, payload) {
   }
 
   function showInterpreterResult() {
+    playSound('interpreter-1')
     console.log(interpreterResult)
     if(interpreterResult.value.argNames) {
       const outputDOM = document.createElement('div')
@@ -2033,30 +2060,40 @@ form.addEventListener('submit', (e) => e.preventDefault())
 
 document.onkeydown = function() {    
   switch (event.keyCode) { 
-      case 116 : // F5 button
+      case 112 : // F5 button
           event.returnValue = false;
           event.keyCode = 0;
           run(input.value, btnLexer.id); 
           return false; 
-      case 117 : // F6 button
+      case 113 : // F6 button
           event.returnValue = false;
           event.keyCode = 0;
           run(input.value, btnParser.id); 
           return false; 
-      case 118 : // F7 button
+      case 114 : // F7 button
           event.returnValue = false;
           event.keyCode = 0;
           run(input.value, btnInterpreter.id); 
           return false; 
-      case 82 : //R button
-          if (event.ctrlKey) { 
-              event.returnValue = false; 
-              event.keyCode = 0;  
-              return false; 
-          } 
+      // case 82 : //R button
+      //     if (event.ctrlKey) { 
+      //         event.returnValue = false; 
+      //         event.keyCode = 0;  
+      //         return false; 
+      //     } 
   }
 }
 
+function playSound(name) {
+  const audio = document.getElementById(`sound-${name}`)
+  if(!audio) return; //Detiene la funcion
+  const audios = document.querySelectorAll('audio')
+  audios.forEach(audio => {
+    audio.pause();
+    audio.currentTime = 0; //Vuelve a Empezar
+  })
+  audio.play();
+}
 // Posibles Test Demos
 // 
 // 1. VAR a = VAR b = VAR c = 10
@@ -2071,10 +2108,15 @@ document.onkeydown = function() {
 // 9. PRINT(["foo", "bar", "Jose", "Perez"])
 /*
 VAR a = VAR b = VAR c = 10
+
 [[[[[[5]]],NOW()]],b,c] 
+
 FUNCTION saludar(persona) => "Hola, " + persona
-saludar("Mami")
+
+saludar("Andres Molero")
+
 FOR i = 1 TO 9 THEN 2 ^ i
+
 VAR i = 0
 WHILE i < 10 THEN VAR i = i + 1
 */
