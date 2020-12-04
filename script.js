@@ -324,7 +324,7 @@ class RuntimeResult {
 /////////////////////////////////////////////
 ///// VALUES ////////////////////////////////
 /////////////////////////////////////////////
-class Number {
+class NumberType {
   constructor(value) {
     this.value = parseFloat(value)
     this.setPosition()
@@ -342,88 +342,88 @@ class Number {
   }
   
   addedTo(other) {
-    if(other instanceof Number) {
-      return {res: new Number(this.value + other.value).setContext(this.context), err: null}
+    if(other instanceof NumberType) {
+      return {res: new NumberType(this.value + other.value).setContext(this.context), err: null}
     }
   }
 
   subtractedBy(other) {
-    if(other instanceof Number) {
-      return {res: new Number(this.value - other.value).setContext(this.context), err: null}
+    if(other instanceof NumberType) {
+      return {res: new NumberType(this.value - other.value).setContext(this.context), err: null}
     }
   }
 
   multipliedBy(other) {
-    if(other instanceof Number) {
-      return {res: new Number(this.value * other.value).setContext(this.context), err: null}
+    if(other instanceof NumberType) {
+      return {res: new NumberType(this.value * other.value).setContext(this.context), err: null}
     }
   }
 
   dividedBy(other) {
-    if(other instanceof Number) {
+    if(other instanceof NumberType) {
       if(other.value === 0) {
         return {res: null, err: new Error(this.position, 'Division entre cero', other.value).setContext(this.context)}
       }
-      return {res: new Number(this.value / other.value).setContext(this.context), err: null}
+      return {res: new NumberType(this.value / other.value).setContext(this.context), err: null}
     }
   }
 
   powedBy(other) {
-    if(other instanceof Number) {
-      return {res: new Number(this.value ** other.value).setContext(this.context), err: null}
+    if(other instanceof NumberType) {
+      return {res: new NumberType(this.value ** other.value).setContext(this.context), err: null}
     }
   }
 
   ee(other) {
-    if(other instanceof Number) {
-      return {res: new Number(+(this.value == other.value)).setContext(this.context), err: null}
+    if(other instanceof NumberType) {
+      return {res: new NumberType(+(this.value == other.value)).setContext(this.context), err: null}
     }
   }
   
   ne(other) {
-    if(other instanceof Number) {
-      return {res: new Number(+(this.value != other.value)).setContext(this.context), err: null}
+    if(other instanceof NumberType) {
+      return {res: new NumberType(+(this.value != other.value)).setContext(this.context), err: null}
     }
   }
   
   lt(other) {
-    if(other instanceof Number) {
-      return {res: new Number(+(this.value < other.value)).setContext(this.context), err: null}
+    if(other instanceof NumberType) {
+      return {res: new NumberType(+(this.value < other.value)).setContext(this.context), err: null}
     }
   }
 
   gt(other) {
-    if(other instanceof Number) {
-      return {res: new Number(+(this.value > other.value)).setContext(this.context), err: null}
+    if(other instanceof NumberType) {
+      return {res: new NumberType(+(this.value > other.value)).setContext(this.context), err: null}
     }
   }
 
   lte(other) {
-    if(other instanceof Number) {
-      return {res: new Number(+(this.value <= other.value)).setContext(this.context), err: null}
+    if(other instanceof NumberType) {
+      return {res: new NumberType(+(this.value <= other.value)).setContext(this.context), err: null}
     }
   }
 
   gte(other) {
-    if(other instanceof Number) {
-      return {res: new Number(+(this.value >= other.value)).setContext(this.context), err: null}
+    if(other instanceof NumberType) {
+      return {res: new NumberType(+(this.value >= other.value)).setContext(this.context), err: null}
     }
   }
 
   and(other) {
-    if(other instanceof Number) {
-      return {res: new Number(+(this.value && other.value)).setContext(this.context), err: null}
+    if(other instanceof NumberType) {
+      return {res: new NumberType(+(this.value && other.value)).setContext(this.context), err: null}
     }
   }
 
   or(other) {
-    if(other instanceof Number) {
-      return {res: new Number(+(this.value || other.value)).setContext(this.context), err: null}
+    if(other instanceof NumberType) {
+      return {res: new NumberType(+(this.value || other.value)).setContext(this.context), err: null}
     }
   }
 
   not() {
-    return {res: new Number(this.value == 1 ? 0 : 1).setContext(this.context), err: null}
+    return {res: new NumberType(this.value == 1 ? 0 : 1).setContext(this.context), err: null}
   }
 
   isTrue() {
@@ -431,7 +431,7 @@ class Number {
   }
 
   copy() {
-    let copy = new Number(this.value)
+    let copy = new NumberType(this.value)
     copy.setPosition(this.position)
     copy.setContext(this.context)
     return copy
@@ -466,7 +466,7 @@ class StringType {
   }
 
   // multipliedBy(other) {
-  //   if(other instanceof Number) {
+  //   if(other instanceof NumberType) {
   //     return {res: new StringType(this.value * other.value).setContext(this.context), err: null}
   //   }
   // }
@@ -511,7 +511,7 @@ class ListType {
   }
 
   subtractedBy(other) {
-    if(other instanceof Number) {
+    if(other instanceof NumberType) {
       let newList = this.copy()
       try {
         newList.elements.splice(other.value,1)
@@ -523,7 +523,7 @@ class ListType {
   }
 
   dividedBy(other) {
-    if(other instanceof Number) {
+    if(other instanceof NumberType) {
 
       if(other.value >= this.elements.length || other.value < 0) {
         return {res: null, err: new Error(this.position, 'Elemento en este indice fuera de los limites', other.value).setContext(this.context)}
@@ -543,16 +543,15 @@ class ListType {
   rep(list) {
     let result = []
     for (let i = 0; i < this.elements.length; i++) {
-      if(this.elements[i].value) {
+      if(this.elements[i].value === undefined) {
         result.push(this.elements[i].value)
-      } else if(this.elements[i].elements) {
+      } else if(this.elements[i].elements === undefined) {
         result.push(this.elements[i].rep(true))
       }
     }
     if(list) {
       return `[${result.toString()}]`
     } else {
-      console.log(result)
       return `${result.join('<br>')}`
 
     }
@@ -644,8 +643,10 @@ class FunctionType extends BaseFunctionType {
     let value = interpreter.visit(this.bodyNode, execCtx).value
     if(res.error) return res
     if(this.returnNull) {
-      return res.success(value)
-      // return res.success(new Number(0))
+      let returnValueFix = value.elements[0]
+      return res.success(returnValueFix)
+      // return res.success(value)
+      // return res.success(new NumberType(0))
     } else {
       return res.success(value)
     }
@@ -688,8 +689,7 @@ class BuiltInFunction extends BaseFunctionType {
       len: {
         argNames: ['array'],
         exec: (execCtx) => {
-          console.log()
-          return new RuntimeResult().success(new Number(execCtx.symbolTable.get('array').elements.length))
+          return new RuntimeResult().success(new NumberType(execCtx.symbolTable.get('array').elements.length))
         }
       } 
     }
@@ -1158,7 +1158,6 @@ class Parser {
       cases.concat(newCases)
     } else {
       elseCase = res.register(this.ifExprC())
-      console.log(elseCase)
       if(res.error) return res
     }
     return res.success([cases, elseCase])
@@ -1201,7 +1200,6 @@ class Parser {
       } else {
         allCases = res.register(this.ifExprBorC())
         if(res.error) return res
-        console.log(allCases)
         const newCases = allCases[0]
         const newElseCase = allCases[1]
         elseCase = newElseCase
@@ -1219,7 +1217,6 @@ class Parser {
       elseCase = newElseCase
       cases.concat(newCases)
     }
-    console.log(cases, elseCase)
     return res.success([cases, elseCase])
   }
 
@@ -1710,10 +1707,10 @@ class Interpreter {
     this.node = null;
     this.visitList = {
       NumberNode: (node, ctx) => {
-        let number = new Number(node.token.value)
-        number.setPosition(node.token.position)
-        number.setContext(ctx)
-        return new RuntimeResult().success(number)
+        let numberType = new NumberType(node.token.value)
+        numberType.setPosition(node.token.position)
+        numberType.setContext(ctx)
+        return new RuntimeResult().success(numberType)
       },
       StringNode: (node, ctx) => {
         return new RuntimeResult().success(new StringType(node.token.value).setPosition(node.token.position).setContext(ctx))
@@ -1826,7 +1823,7 @@ class Interpreter {
         let error = null;
 
         if(node.operatorToken.type === TT['-']) {
-          const {res, err} = number.multipliedBy(new Number(-1))
+          const {res, err} = number.multipliedBy(new NumberType(-1))
           number = res;
           error = err;
         }
@@ -1841,6 +1838,7 @@ class Interpreter {
           return res.failure(error)
         } else { 
           number.setPosition(node.position);
+          console.log(number)
           return res.success(number);
         }
       },
@@ -1874,7 +1872,6 @@ class Interpreter {
           const condition = node.cases[i][0];
           const expression = node.cases[i][1];
           const returnNull = node.cases[i][2];
-          console.log(returnNull)
           let conditionValue = res.register(this.visit(condition, ctx))
           if(res.error) return res
           
@@ -1882,9 +1879,16 @@ class Interpreter {
             let exprValue = res.register(this.visit(expression, ctx))
             if(res.error) return res
             if(returnNull) {
-              return res.success(exprValue)
-              // return res.success(new Number(0))
+              console.log(exprValue)
+              let returnValueFix = {
+                value: exprValue.rep(),
+                position: exprValue.position,
+                context: exprValue.context,
+              }
+              return res.success(returnValueFix)
+              // return res.success(new NumberType(0))
             } { 
+              console.log(exprValue)
               return res.success(exprValue)
             }
           }
@@ -1892,13 +1896,23 @@ class Interpreter {
           if(node.elseCase) {
             let expression = node.elseCase[0]
             let returnNull = node.elseCase[1]
-            console.log(returnNull)
             let elseValue = res.register(this.visit(expression, ctx))
             if(res.error) return res
-            return res.success(elseValue)
+            console.log(elseValue)
+            if(returnNull) {
+              console.log(elseValue)
+              let returnValueFix = {
+                value: elseValue.rep(),
+                position: elseValue.position,
+                context: elseValue.context,
+              }
+              return res.success(returnValueFix)
+            } else {
+              return res.success(elseValue)
+            }
           }
-
-          return res.success(new Number(0))
+          
+          return res.success(new NumberType(0))
         }
       },
       ForNode: (node, ctx) => {
@@ -1916,7 +1930,7 @@ class Interpreter {
           stepNode = res.register(this.visit(node.stepNode, ctx))
           if(res.error) return res
         } else {
-          stepNode = new Number(1)
+          stepNode = new NumberType(1)
         }
 
         let i = startNode.value
@@ -1933,17 +1947,27 @@ class Interpreter {
         }
 
         while (condition()) {
-          ctx.symbolTable.set(node.varNameToken.value, new Number(i))
+          ctx.symbolTable.set(node.varNameToken.value, new NumberType(i))
           i += stepNode.value
 
           elements.push(res.register(this.visit(node.bodyNode, ctx)))
           if(res.error) return res
         }
         if(node.returnNull) {
-          return res.success(new ListType(elements).setContext(ctx).setPosition(node.position))
-          // return res.success(new Number(0))
+          let returnValueFix = []
+
+          for (let i = 0; i < elements.length; i++) {
+            returnValueFix.push(elements[i].elements[0])
+          }
+          
+          console.log(returnValueFix)
+          let listType = new ListType(returnValueFix).setContext(ctx).setPosition(node.position)
+          return res.success(listType)
+          // return res.success(new NumberType(0))
         } { 
-          return res.success(new ListType(elements).setContext(ctx).setPosition(node.position))
+          let listType = new ListType(elements).setContext(ctx).setPosition(node.position)
+          console.log(elements)
+          return res.success(listType)
         }
       },
       WhileNode: (node, ctx) => {
@@ -1961,8 +1985,14 @@ class Interpreter {
         }
 
         if(node.returnNull) {
-          return res.success(new ListType(elements).setContext(ctx).setPosition(node.position))
-          // return res.success(new Number(0))
+          let returnValueFix = []
+
+          for (let i = 0; i < elements.length; i++) {
+            returnValueFix.push(elements[i].elements[0])
+          }
+          
+          return res.success(new ListType(returnValueFix).setContext(ctx).setPosition(node.position))
+          // return res.success(new NumberType(0))
         } { 
           return res.success(new ListType(elements).setContext(ctx).setPosition(node.position))
         }
@@ -1983,7 +2013,6 @@ class Interpreter {
         if(node.varNameToken) {
           ctx.symbolTable.set(funcName, funcValue)
         }
-
         return res.success(funcValue)
       },
       CallNode: (node, ctx) => {
@@ -2007,7 +2036,7 @@ class Interpreter {
   }
 
   visit(node, ctx) {
-    console.log(node)
+    // console.log(node)
     if(this.visitList[node.type()]) {
       return this.visitList[node.type()](node, ctx)
     } else {
@@ -2023,9 +2052,9 @@ class Interpreter {
 /////////////////////////////////////////////
 
 let globalSymbolTable = new SymbolTable()
-globalSymbolTable.set('null', new Number(0))
-globalSymbolTable.set('true', new Number(1))
-globalSymbolTable.set('false', new Number(0))
+globalSymbolTable.set('null', new NumberType(0))
+globalSymbolTable.set('true', new NumberType(1))
+globalSymbolTable.set('false', new NumberType(0))
 globalSymbolTable.set('PRINT', new BuiltInFunction('print'))
 globalSymbolTable.set('NOW', new BuiltInFunction('now'))
 globalSymbolTable.set('NOTA', new BuiltInFunction('nota'))
@@ -2254,19 +2283,24 @@ function playSound(name) {
   })
   audio.play();
 }
-// Posibles Test Demos
-// 
-// 1. VAR a = VAR b = VAR c = 10
-// 2. VAR a = 2 + 8 == 5 + 5
-// 3. VAR a = 1 == 1 && 2 == 2
-// 3' [a,b,c] 
-// 4. FUNCTION sumar(a,b) => a+b
-// 5. sumar(1,2)
-// 6. FUNCTION saludar(persona) => "Hola, " + persona
-// 7. saludar("Andres Molero")
-// 8. FOR i = 1 TO 9 THEN 2 ^ i
-// 9. PRINT(["foo", "bar", "Jose", "Perez"])
 /*
+
+// Posibles Test Demos
+
+VAR a = VAR b = VAR c = 10
+
+VAR a = 2 + 8 == 5 + 5
+
+VAR a = 1 == 1 && 2 == 2
+
+[a,b,c] 
+
+FUNCTION sumar(a,b) => a+b
+sumar(20,-5)
+FUNCTION saludar(persona) => "Hola, " + persona
+saludar("Andres Molero")
+FOR i = 1 TO 9 THEN 2 ^ i
+PRINT(["foo", "bar", "Jose", "Perez"])
 VAR a = VAR b = VAR c = 10
 
 [[[[[[5]]],NOW()]],b,c] 
@@ -2323,6 +2357,11 @@ FOR i = 1 TO 9 THEN 2 ^ i
 VAR i = 0
 WHILE i < 10 THEN VAR i = i + 1
 
+VAR i = 0
+WHILE i < 10 THEN
+VAR i = i + 1
+END
+
 VAR a = VAR b = 10
 IF a == b THEN "SI" ELSE "NO"
 
@@ -2331,16 +2370,20 @@ VAR a = FUNCTION saludar(persona) => "Hola, " + persona
 
 
 IF 1 == 1 THEN 
-  "SI"  
+  "SI"
 ELSE
   "NO"
 END
+
+IF 1 == 1 THEN "SI" ELSE "NO"
 
 FUNCTION contar(numeros)
   FOR i = 0 TO LEN(numeros) THEN
   numeros / i
   END
 END
+contar([1,2,3])
 
+FUNCTION contar(numeros) => FOR i = 0 TO LEN(numeros) THEN numeros / i
 contar([1,2,3])
 */
