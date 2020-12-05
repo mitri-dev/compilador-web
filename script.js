@@ -465,11 +465,57 @@ class StringType {
     }
   }
 
-  // multipliedBy(other) {
-  //   if(other instanceof NumberType) {
-  //     return {res: new StringType(this.value * other.value).setContext(this.context), err: null}
-  //   }
-  // }
+  ee(other) {
+    if(other instanceof StringType) {
+      return {res: new NumberType(+(this.value == other.value)).setContext(this.context), err: null}
+    }
+  }
+  
+  ne(other) {
+    if(other instanceof StringType) {
+      return {res: new NumberType(+(this.value != other.value)).setContext(this.context), err: null}
+    }
+  }
+  
+  lt(other) {
+    if(other instanceof StringType) {
+      return {res: new NumberType(+(this.value < other.value)).setContext(this.context), err: null}
+    }
+  }
+
+  gt(other) {
+    if(other instanceof StringType) {
+      return {res: new NumberType(+(this.value > other.value)).setContext(this.context), err: null}
+    }
+  }
+
+  lte(other) {
+    if(other instanceof StringType) {
+      return {res: new NumberType(+(this.value <= other.value)).setContext(this.context), err: null}
+    }
+  }
+
+  gte(other) {
+    if(other instanceof StringType) {
+      return {res: new NumberType(+(this.value >= other.value)).setContext(this.context), err: null}
+    }
+  }
+
+  and(other) {
+    if(other instanceof StringType) {
+      return {res: new NumberType(+(this.value && other.value)).setContext(this.context), err: null}
+    }
+  }
+
+  or(other) {
+    if(other instanceof StringType) {
+      return {res: new NumberType(+(this.value || other.value)).setContext(this.context), err: null}
+    }
+  }
+
+  not() {
+    return {res: new StringType(this.value == 1 ? 0 : 1).setContext(this.context), err: null}
+  }
 
   isTrue() {
     return this.value.length > 0
@@ -2048,7 +2094,6 @@ class Interpreter {
   }
 
   visit(node, ctx) {
-    // console.log(node)
     if(this.visitList[node.type()]) {
       return this.visitList[node.type()](node, ctx)
     } else {
@@ -2147,7 +2192,7 @@ function run(text, payload) {
   }
 
   function showLexerResult() {
-    playSound('lexer')
+    playSound('parser-2')
     const outputDOM = document.createElement('div')
     outputDOM.classList.add('tokens')
     let html = '';
@@ -2241,9 +2286,16 @@ const output = document.getElementById('output')
 const btnLexer = document.getElementById('lexer')
 const btnParser = document.getElementById('parser')
 const btnInterpreter = document.getElementById('interpreter')
-// const btnBorrar = document.getElementById('borrar')
-// btnBorrar.addEventListener('click', () => input.value = '')
+const btnBorrar = document.getElementById('borrar')
+const btnDemos = document.getElementById('demos')
+const btnSaiyan = document.getElementById('saiyan')
+const demosDOM = document.querySelector('.demos-wrapper')
+const demosDOMBtns = document.querySelectorAll('.demos button')
+const img = document.querySelector('img')
+
 let keys = []
+
+let saiyan = false
 
 // Listeners
 window.addEventListener('keyup', () => keys = [])
@@ -2257,37 +2309,142 @@ window.addEventListener('keydown', (e) => {
 btnLexer.addEventListener('click', () => run(input.value, btnLexer.id))
 btnParser.addEventListener('click', () => run(input.value, btnParser.id))
 btnInterpreter.addEventListener('click', () => run(input.value, btnInterpreter.id))
+btnSaiyan.addEventListener('click', () => {
+  saiyan = !saiyan
+  if(saiyan) {
+    playSound('lexer')
+    img.classList.remove('hidden')
+  } else {
+    playSound('error')
+    img.classList.add('hidden')
+  }
+})
+btnBorrar.addEventListener('click', () => {
+  playSound('tik')
+  input.value = ''
+})
+btnDemos.addEventListener('click', showDemos)
+
+const demosValues = [
+`VAR a = "Lorem ipsum dolor sit amet."
+
+VAR b = -85.5
+
+VAR c = [123, "Hola mundo!"]`,
+
+`VAR a = VAR b = 50
+
+VAR c = 25
+
+VAR a = b > c`,
+
+`VAR a = FUNCTION saludar(persona) => "Hola, " + persona + "!"
+
+a("Andres")`,
+
+`IF 1 == 1 THEN "SI" ELSE "NO"`,
+
+`IF 1 != 1 THEN 
+  "SI"
+ELSE
+  "NO"
+END`,
+
+`IF "A" == "B" THEN 
+"Amarillo"
+ELSE 
+  IF "B" != "B" THEN
+  "Azul"
+  ELSE
+    IF  1 && 1-1 THEN
+    "Rojo"
+    ELSE
+    "Verde"
+    END
+  END
+END`,
+
+`FOR i = 1 TO 9 THEN 2 ^ i`,
+
+`VAR i = 0
+WHILE i < 10 THEN VAR i = i + 1`,
+
+`VAR i = 1
+WHILE i < 10 THEN
+  VAR i = i * 2
+END`,
+
+`FUNCTION sumar(a,b) => a+b
+sumar(20,-5)`,
+
+`FUNCTION contar(numeros)
+  FOR i = 0 TO LEN(numeros) THEN
+  numeros / i
+  END
+END
+contar([1,2,3])`,
+
+`FUNCTION contar(numeros) => FOR i = 0 TO LEN(numeros) THEN numeros / i
+contar([1,2,3])`,
+
+`NOTA()
+
+INTEGRANTES()
+
+NOW()
+
+LEN(["Manzana", "Pera", "Naranja"])
+
+PRINT("Buenos días!")`
+
+]
+
+demosDOMBtns.forEach((btn,i) => {
+  btn.addEventListener('click', () => clickDemoBtn(demosValues[i]))
+})
 
 form.addEventListener('submit', (e) => e.preventDefault())
 
-document.onkeydown = function() {    
-  switch (event.keyCode) { 
-      case 112 : // F5 button
-          event.returnValue = false;
-          event.keyCode = 0;
+function showDemos() {  
+  playSound('tik')
+  console.log('hi')
+  demosDOM.classList.remove('hidden')
+}
+
+function clickDemoBtn(value) {
+  playSound('tok')
+  input.value = value
+  demosDOM.classList.add('hidden')
+}
+
+document.onkeydown = function(e) {    
+  switch (e.keyCode) { 
+      case 112 : // F1 button
+          e.returnValue = false;
+          e.keyCode = 0;
           run(input.value, btnLexer.id); 
           return false; 
-      case 113 : // F6 button
-          event.returnValue = false;
-          event.keyCode = 0;
+      case 113 : // F2 button
+          e.returnValue = false;
+          e.keyCode = 0;
           run(input.value, btnParser.id); 
           return false; 
-      case 114 : // F7 button
-          event.returnValue = false;
-          event.keyCode = 0;
+      case 114 : // F3 button
+          e.returnValue = false;
+          e.keyCode = 0;
           run(input.value, btnInterpreter.id); 
           return false; 
-      // case 82 : //R button
-      //     if (event.ctrlKey) { 
-      //         event.returnValue = false; 
-      //         event.keyCode = 0;  
-      //         return false; 
-      //     } 
   }
 }
 
 function playSound(name) {
-  const audio = document.getElementById(`sound-${name}`)
+  console.log('hi')
+  let audio;
+  if(!saiyan) {
+    audio = document.getElementById(`sound-${name}-saiyan`)
+  } else {
+    audio = document.getElementById(`sound-${name}`)
+  }
   if(!audio) return; //Detiene la funcion
   const audios = document.querySelectorAll('audio')
   audios.forEach(audio => {
@@ -2295,8 +2452,83 @@ function playSound(name) {
     audio.currentTime = 0; //Vuelve a Empezar
   })
   audio.play();
+  console.log(audio)
+
 }
 /*
+
+/////////////////////////////
+// ASIGNACION DE VARIABLES //
+/////////////////////////////
+VAR a = VAR b = 50
+VAR c = 25
+
+VAR a = b > c
+
+VAR a = VAR b = VAR c = 10
+[a,b,c]
+
+VAR a = FUNCTION saludar(persona) => "Hola, " + persona + "!"
+a("Andres")
+
+////////////////////////
+// OPERADORES LOGICOS //
+////////////////////////
+IF 1 == 1 THEN 
+  "SI"
+ELSE
+  "NO"
+END
+
+
+1 == 10
+1 != 10
+1 < 10
+1 <= 10
+1 > 10
+1 >= 10
+TRUE
+FALSE
+1 || 0
+1 && 0
+
+///////////
+// LOOPS //
+///////////
+FOR i = 1 TO 9 THEN 2 ^ i
+
+VAR i = 0
+WHILE i < 10 THEN VAR i = i + 1
+
+VAR i = 1
+WHILE i < 10 THEN
+  VAR i = i * 2
+END
+
+///////////////
+// FUNCIONES //
+///////////////
+FUNCTION sumar(a,b) => a+b
+sumar(20,-5)
+
+FUNCTION contar(numeros)
+  FOR i = 0 TO LEN(numeros) THEN
+  numeros / i
+  END
+END
+contar([1,2,3])
+
+FUNCTION contar(numeros) => FOR i = 0 TO LEN(numeros) THEN numeros / i
+contar([1,2,3])
+
+/////////////////////////////
+// FUNCIONES PRE-DEFINIDAS //
+/////////////////////////////
+NOW()
+LEN(["Manzana", "Pera", "Naranja"])
+PRINT("Buenos días!")
+NOTA()
+INTEGRANTES()
 
 // Posibles Test Demos
 
@@ -2362,6 +2594,7 @@ NOW()
 LEN(["Manzana", "Pera", "Naranja"])
 PRINT("Buenos días!")
 NOTA()
+INTEGRANTES()
 
 
 Operaciones:

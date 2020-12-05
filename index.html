@@ -11,25 +11,91 @@
 </head>
 
 <body>
+  <div class="demos-wrapper hidden">
+    <div class="demos">
+      <h1>Demos</h1>
+
+      <div class="demos-body">
+
+      <div>
+        <h2>Declaración de Variables</h2>
+        <div class="btns">
+          <button>1</button>
+          <button>2</button>
+          <button>3</button>
+        </div>
+      </div>
+
+      <div>
+
+        <h2>Operaciones Lógicas</h2>
+        <div class="btns">
+          <button>1</button>
+          <button>2</button>
+          <button>3</button>
+        </div>
+      </div>
+
+      <div>
+
+        <h2>Loops</h2>
+        <div class="btns">
+          <button>1</button>
+          <button>2</button>
+          <button>3</button>
+        </div>
+      </div>
+
+      <div>
+
+        <h2>Declaración de Funciones</h2>
+        <div class="btns">
+          <button>1</button>
+          <button>2</button>
+          <button>3</button>
+        </div>
+      </div>
+
+      <div class="span">
+
+        <h2>Funciones Pre-Definidas</h2>
+        <div class="btns">
+          <button>Mostrar Todas</button>
+        </div>
+      </div>
+      </div>
+
+    </div>
+  </div>
+
+  <img class="hidden" src="./sounds/hair.png" alt="">
 
   <form id="form" class="view">
     <textarea id="input"></textarea>
     <div class="btns">
-      <!-- <button id="borrar">Borrar</button> -->
       <button id="lexer">Analizador Léxico</button>
       <button id="parser">Analizador Sintáctico</button>
       <button id="interpreter">Analizador Semántico</button>
+      <button id="demos">Demos</button>
+      <button id="borrar">Borrar</button>
+      <button id="saiyan">🔥</button>
     </div>
     <div id="output">
     </div>
   </form>
 
-  <audio id="sound-lexer" src="sounds/Lexer-1.ogg"></audio>
-  <audio id="sound-parser-1" src="sounds/Parser-1.ogg"></audio>
-  <audio id="sound-parser-2" src="sounds/Parser-2.ogg"></audio>
-  <audio id="sound-interpreter-1" src="sounds/Interpreter-1.ogg"></audio>
-  <audio id="sound-interpreter-2" src="sounds/Interpreter-2.ogg"></audio>
-  <audio id="sound-error" src="sounds/Error.ogg"></audio>
+  <audio id="sound-lexer" src="./sounds/Lexer-1.ogg"></audio>
+  <audio id="sound-parser-1" src="./sounds/Parser-1.ogg"></audio>
+  <audio id="sound-parser-2" src="./sounds/Parser-2.ogg"></audio>
+  <audio id="sound-interpreter-1" src="./sounds/Interpreter-1.ogg"></audio>
+  <audio id="sound-interpreter-2" src="./sounds/Interpreter-2.ogg"></audio>
+  <audio id="sound-error" src="./sounds/Error.ogg"></audio>
+  <audio id="sound-error-saiyan" src="./sounds/Error.ogg"></audio>
+
+  <audio id="sound-tik-saiyan" src="./sounds/Tik.mp3"></audio>
+  <audio id="sound-tik" src="./sounds/Tik.mp3"></audio>
+  <audio id="sound-tok-saiyan" src="./sounds/Tok.mp3"></audio>
+  <audio id="sound-tok" src="./sounds/Tok.mp3"></audio>
 
   <script src="script.js"></script>
 </body>
