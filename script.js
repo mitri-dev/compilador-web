@@ -2395,8 +2395,8 @@ NOW()
 
 LEN(["Manzana", "Pera", "Naranja"])
 
-PRINT("Buenos días!")`
-
+PRINT("Buenos días!")`,
+`INTEGRANTES()`
 ]
 
 demosDOMBtns.forEach((btn,i) => {
