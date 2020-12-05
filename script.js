@@ -2131,7 +2131,7 @@ function run(text, payload) {
   }
   if(payload === 'lexer') {
     if(lexerResult.tokens.length <= 1) {
-      playSound('lexer')
+      playSound('parser-2')
       output.innerHTML = '&lt;empty&gt;'
       output.innerHTML += '<div class="msg">Correcto Análisis Léxico</div>'
       return
@@ -2146,12 +2146,12 @@ function run(text, payload) {
 
   if (parserResult.error) {
     if(lexerResult.tokens.length <= 1 && payload == 'parser') {
-      playSound('parser-2')
+      playSound('parser-1')
       output.innerHTML = '&lt;empty&gt;'
       output.innerHTML += '<div class="msg">Correcto Análisis Sintáctico</div>'
       return
     } else if (lexerResult.tokens.length <= 1 && payload == 'interpreter') {
-      playSound('interpreter-2')
+      playSound('interpreter-1')
       output.innerHTML = '&lt;empty&gt;'
       output.innerHTML += '<div class="msg">Correcto Análisis Semántico</div>'
       return
@@ -2315,7 +2315,7 @@ btnSaiyan.addEventListener('click', () => {
     playSound('lexer')
     img.classList.remove('hidden')
   } else {
-    playSound('error')
+    playSound('bye')
     img.classList.add('hidden')
   }
 })
