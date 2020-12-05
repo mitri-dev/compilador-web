@@ -211,4 +211,14 @@ img {
   .demos {
     width: 80vw;
   }
+  .btns {
+    overflow-x: auto;
+  }
+  .btns::-webkit-scrollbar {
+    display: none;
+  }
+  .btns {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
 }
