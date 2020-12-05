@@ -691,6 +691,18 @@ class BuiltInFunction extends BaseFunctionType {
         exec: (execCtx) => {
           return new RuntimeResult().success(new NumberType(execCtx.symbolTable.get('array').elements.length))
         }
+      },
+      integrantes: {
+        argNames: [],
+        exec: (execCtx) => {
+          return new RuntimeResult().success(new StringType(`
+          González Rubén 28.288.237<br>
+          Martinez Wender 28.400.156<br>
+          Mitri Jorge 27.137.766<br>
+          Ramírez Juan 27.886.663<br>
+          Rivas Carlos 28.470.187
+          `))
+        }
       } 
     }
   }
@@ -2052,13 +2064,14 @@ class Interpreter {
 /////////////////////////////////////////////
 
 let globalSymbolTable = new SymbolTable()
-globalSymbolTable.set('null', new NumberType(0))
-globalSymbolTable.set('true', new NumberType(1))
-globalSymbolTable.set('false', new NumberType(0))
+globalSymbolTable.set('NULL', new NumberType(0))
+globalSymbolTable.set('TRUE', new NumberType(1))
+globalSymbolTable.set('FALSE', new NumberType(0))
 globalSymbolTable.set('PRINT', new BuiltInFunction('print'))
 globalSymbolTable.set('NOW', new BuiltInFunction('now'))
 globalSymbolTable.set('NOTA', new BuiltInFunction('nota'))
 globalSymbolTable.set('LEN', new BuiltInFunction('len'))
+globalSymbolTable.set('INTEGRANTES', new BuiltInFunction('integrantes'))
 function run(text, payload) {
   // Reset Output
   output.innerHTML = ''
@@ -2181,11 +2194,11 @@ function run(text, payload) {
   function showInterpreterResult() {
     playSound('interpreter-1')
     console.log(interpreterResult)
-    if(interpreterResult.value.argNames) {
+    if(interpreterResult.value.elements[0].argNames) {
       const outputDOM = document.createElement('div')
       outputDOM.classList.add('tokens')
       let html = '';
-      html += `<p>Resultado</p><p>Funcion "${interpreterResult.value.name}" definida</p>`
+      html += `<p>Resultado</p><p>Funcion "${interpreterResult.value.elements[0].name}" definida<br>${interpreterResult.value.rep()}</p>`
       outputDOM.innerHTML = html
       output.appendChild(outputDOM);
       output.innerHTML += '<div class="msg">Correcto Análisis Semántico</div>'
@@ -2297,19 +2310,20 @@ VAR a = 1 == 1 && 2 == 2
 
 FUNCTION sumar(a,b) => a+b
 sumar(20,-5)
+
 FUNCTION saludar(persona) => "Hola, " + persona
 saludar("Andres Molero")
+
 FOR i = 1 TO 9 THEN 2 ^ i
+
 PRINT(["foo", "bar", "Jose", "Perez"])
-VAR a = VAR b = VAR c = 10
+
 
 [[[[[[5]]],NOW()]],b,c] 
 
 FUNCTION saludar(persona) => "Hola, " + persona
 
 saludar("Andres Molero")
-
-FOR i = 1 TO 9 THEN 2 ^ i
 
 VAR i = 0
 WHILE i < 10 THEN VAR i = i + 1
@@ -2327,16 +2341,16 @@ Arrays:
 ["Hola", 123]
 
 Operadores Logicos:
-1 == 1
-1 != 0
+1 == 10
+1 != 10
+1 < 10
+1 <= 10
+1 > 10
+1 >= 10
 TRUE
 FALSE
-<
-<=
->
->=
-||
-&&
+1 || 0
+1 && 0
 
 Varibles:
 VAR a = 5
@@ -2344,15 +2358,15 @@ VAR b = "Jorge"
 VAR c = 5 == 6
 
 Funciones built-in:
-NOTA()
-PRINT("Saludos")
 NOW()
+LEN(["Manzana", "Pera", "Naranja"])
+PRINT("Buenos días!")
+NOTA()
+
 
 Operaciones:
 FUNCTION saludar(persona) => "Hola, " + persona
 saludar("Andres Molero")
-
-FOR i = 1 TO 9 THEN 2 ^ i
 
 VAR i = 0
 WHILE i < 10 THEN VAR i = i + 1
@@ -2365,8 +2379,8 @@ END
 VAR a = VAR b = 10
 IF a == b THEN "SI" ELSE "NO"
 
-a("Jorge") + " Mitri"
 VAR a = FUNCTION saludar(persona) => "Hola, " + persona
+a("Jorge") + " Mitri"
 
 
 IF 1 == 1 THEN 
